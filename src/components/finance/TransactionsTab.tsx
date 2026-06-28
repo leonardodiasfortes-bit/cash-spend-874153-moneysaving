@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { monthRange, brl, type Category, type Transaction } from "@/lib/finance";
-import { getMembers, getPersonMap } from "@/lib/family";
+import { getMembers, getPersonMap, savePersons } from "@/lib/family";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TransactionList } from "./TransactionList";
@@ -55,6 +55,9 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkCatOpen, setBulkCatOpen] = useState(false);
   const [bulkCatId, setBulkCatId] = useState("");
+  const NOBODY = "__none__";
+  const [bulkPersonOpen, setBulkPersonOpen] = useState(false);
+  const [bulkPerson, setBulkPerson] = useState(NOBODY);
   const members = getMembers();
   const personMap = getPersonMap();
   const qc = useQueryClient();
@@ -102,6 +105,14 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
     } else {
       setSelectedIds(new Set(filtered.map((t) => t.id)));
     }
+  }
+
+  function applyBulkPerson() {
+    savePersons(selectedArr, bulkPerson === NOBODY ? null : bulkPerson);
+    qc.invalidateQueries({ queryKey: ["transactions"] });
+    toast.success(`"Quem?" atualizado em ${selectedArr.length} transação(ões).`);
+    setBulkPersonOpen(false);
+    exitSelectionMode();
   }
 
   function exitSelectionMode() {
@@ -183,6 +194,35 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk person dialog */}
+      {members.length > 0 && (
+        <Dialog open={bulkPersonOpen} onOpenChange={(v) => !v && setBulkPersonOpen(false)}>
+          <DialogContent className="sm:max-w-xs">
+            <DialogHeader>
+              <DialogTitle>Alterar Quem?</DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-muted-foreground">
+              Aplicar a <strong>{selectedArr.length}</strong> transação(ões) selecionada(s).
+            </p>
+            <Select value={bulkPerson} onValueChange={setBulkPerson}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a pessoa…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NOBODY}>— Ninguém —</SelectItem>
+                {members.map((m) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setBulkPersonOpen(false)}>Cancelar</Button>
+              <Button size="sm" onClick={applyBulkPerson}>Aplicar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -282,6 +322,12 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
           {selectedIds.size > 0 && (
             <>
               <div className="ml-auto flex items-center gap-2">
+                {members.length > 0 && (
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs"
+                    onClick={() => { setBulkPerson(NOBODY); setBulkPersonOpen(true); }}>
+                    <User className="h-3.5 w-3.5" /> Alterar Quem?
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs"
                   onClick={() => { setBulkCatId(""); setBulkCatOpen(true); }}>
                   <Tag className="h-3.5 w-3.5" /> Alterar categoria

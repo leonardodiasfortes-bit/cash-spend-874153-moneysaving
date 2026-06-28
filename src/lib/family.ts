@@ -28,8 +28,11 @@ export function savePerson(txId: string, person: string | null): void {
   localStorage.setItem(PERSONS_KEY, JSON.stringify(map));
 }
 
-export function savePersons(txIds: string[], person: string): void {
+export function savePersons(txIds: string[], person: string | null): void {
   const map = getPersonMap();
-  for (const id of txIds) map[id] = person;
+  for (const id of txIds) {
+    if (person) map[id] = person;
+    else delete map[id];
+  }
   localStorage.setItem(PERSONS_KEY, JSON.stringify(map));
 }
