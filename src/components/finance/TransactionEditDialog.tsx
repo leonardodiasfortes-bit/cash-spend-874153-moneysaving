@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { type Category, type Transaction } from "@/lib/finance";
+import { getMembers, getPersonMap, savePerson } from "@/lib/family";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +49,9 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
   const [transactionDate, setTransactionDate] = useState(tx.transaction_date);
   const [dueDate, setDueDate] = useState(tx.due_date ?? "");
   const [status, setStatus] = useState<"paid" | "pending">(tx.status ?? "pending");
+  const [person, setPerson] = useState(() => getPersonMap()[tx.id] ?? "");
+
+  const members = getMembers();
 
   useEffect(() => {
     if (open) {
@@ -57,6 +61,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
       setTransactionDate(tx.transaction_date);
       setDueDate(tx.due_date ?? "");
       setStatus(tx.status ?? "pending");
+      setPerson(getPersonMap()[tx.id] ?? "");
     }
   }, [open, tx]);
 
@@ -82,6 +87,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
       if (error) throw error;
     },
     onSuccess: () => {
+      savePerson(tx.id, person);
       qc.invalidateQueries({ queryKey: ["transactions"] });
       toast.success("Transação atualizada!");
       onClose();
@@ -136,6 +142,23 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
               required
             />
           </div>
+
+          {members.length > 0 && (
+            <div className="space-y-2">
+              <Label>Quem?</Label>
+              <Select value={person} onValueChange={setPerson}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a pessoa" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— Ninguém —</SelectItem>
+                  {members.map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Categoria</Label>
