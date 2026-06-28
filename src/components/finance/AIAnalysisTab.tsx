@@ -242,7 +242,7 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
                   type={keyVisible ? "text" : "password"}
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
-                  placeholder="AIza..."
+                  placeholder="Cole aqui sua chave do Google AI Studio…"
                   className="pr-16 font-mono text-xs"
                 />
                 <button
