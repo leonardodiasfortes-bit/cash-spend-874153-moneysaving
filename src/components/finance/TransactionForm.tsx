@@ -3,10 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, RefreshCw } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
-import type { Category } from "@/lib/finance";
+import { offsetDate, type Category, type RecurrenceType } from "@/lib/finance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +44,13 @@ const schema = z
     path: ["status"],
   });
 
+const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
+  none: "Não repete",
+  monthly: "Mensal",
+  yearly: "Anual",
+  installment: "Parcelado",
+};
+
 export function TransactionForm({ userId }: { userId: string }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"income" | "expense">("expense");
@@ -54,15 +61,17 @@ export function TransactionForm({ userId }: { userId: string }) {
   const [dueDate, setDueDate] = useState("");
   const [status, setStatus] = useState<"paid" | "pending">("pending");
 
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>("none");
+  const [installmentTotal, setInstallmentTotal] = useState(2);
+  const [monthsAhead, setMonthsAhead] = useState(12);
+  const [yearsAhead, setYearsAhead] = useState(2);
+
   const qc = useQueryClient();
 
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("categories")
-        .select("*")
-        .order("name");
+      const { data, error } = await supabase.from("categories").select("*").order("name");
       if (error) throw error;
       return data as Category[];
     },
@@ -81,26 +90,80 @@ export function TransactionForm({ userId }: { userId: string }) {
         due_date: type === "expense" ? dueDate || null : null,
         status: type === "expense" ? status : null,
       });
-      if (!parsed.success) {
-        throw new Error(parsed.error.issues[0].message);
+      if (!parsed.success) throw new Error(parsed.error.issues[0].message);
+
+      const base = { ...parsed.data, user_id: userId };
+
+      if (recurrenceType === "none") {
+        const { error } = await supabase
+          .from("transactions")
+          .insert({ ...base, recurrence_type: "none" });
+        if (error) throw error;
+        return;
       }
-      const { error } = await supabase.from("transactions").insert({
-        ...parsed.data,
-        user_id: userId,
-      });
+
+      const groupId = crypto.randomUUID();
+      const count =
+        recurrenceType === "installment"
+          ? installmentTotal
+          : recurrenceType === "monthly"
+          ? monthsAhead
+          : yearsAhead;
+
+      const rows = Array.from({ length: count }, (_, i) => ({
+        ...base,
+        description:
+          recurrenceType === "installment"
+            ? `${base.description} ${i + 1}/${count}`
+            : base.description,
+        transaction_date: offsetDate(base.transaction_date, recurrenceType, i),
+        due_date: base.due_date ? offsetDate(base.due_date, recurrenceType, i) : null,
+        status: base.status ? (i === 0 ? base.status : "pending") : null,
+        recurrence_type: recurrenceType,
+        installment_current: recurrenceType === "installment" ? i + 1 : null,
+        installment_total: recurrenceType === "installment" ? count : null,
+        recurrence_group_id: groupId,
+      }));
+
+      const { error } = await supabase.from("transactions").insert(rows);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
-      toast.success("Transação adicionada!");
+      const label =
+        recurrenceType === "none"
+          ? "Transação adicionada!"
+          : recurrenceType === "installment"
+          ? `${installmentTotal} parcelas criadas!`
+          : recurrenceType === "monthly"
+          ? `${monthsAhead} lançamentos mensais criados!`
+          : `${yearsAhead} lançamentos anuais criados!`;
+      toast.success(label);
       setOpen(false);
-      setAmount("");
-      setDescription("");
-      setCategoryId("");
-      setDueDate("");
+      resetForm();
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  function resetForm() {
+    setAmount("");
+    setDescription("");
+    setCategoryId("");
+    setDueDate("");
+    setRecurrenceType("none");
+    setInstallmentTotal(2);
+    setMonthsAhead(12);
+    setYearsAhead(2);
+  }
+
+  const recurrenceCount =
+    recurrenceType === "installment"
+      ? installmentTotal
+      : recurrenceType === "monthly"
+      ? monthsAhead
+      : recurrenceType === "yearly"
+      ? yearsAhead
+      : 0;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -217,9 +280,90 @@ export function TransactionForm({ userId }: { userId: string }) {
             </div>
           )}
 
+          {/* Recorrência */}
+          <div className="rounded-xl border bg-muted/30 p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+              <Label className="text-xs font-medium">Recorrência</Label>
+            </div>
+
+            <Select
+              value={recurrenceType}
+              onValueChange={(v) => setRecurrenceType(v as RecurrenceType)}
+            >
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(RECURRENCE_LABELS) as RecurrenceType[]).map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {RECURRENCE_LABELS[r]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {recurrenceType === "installment" && (
+              <div className="space-y-1">
+                <Label className="text-xs">Total de parcelas</Label>
+                <Input
+                  type="number"
+                  min={2}
+                  max={120}
+                  value={installmentTotal}
+                  onChange={(e) => setInstallmentTotal(Number(e.target.value))}
+                  className="h-8 text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Criará {installmentTotal} parcelas: "{description || "Nome"} 1/{installmentTotal}", "2/{installmentTotal}"…
+                </p>
+              </div>
+            )}
+
+            {recurrenceType === "monthly" && (
+              <div className="space-y-1">
+                <Label className="text-xs">Repetir por quantos meses</Label>
+                <Input
+                  type="number"
+                  min={2}
+                  max={120}
+                  value={monthsAhead}
+                  onChange={(e) => setMonthsAhead(Number(e.target.value))}
+                  className="h-8 text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {monthsAhead} lançamentos mensais serão criados automaticamente.
+                </p>
+              </div>
+            )}
+
+            {recurrenceType === "yearly" && (
+              <div className="space-y-1">
+                <Label className="text-xs">Repetir por quantos anos</Label>
+                <Input
+                  type="number"
+                  min={2}
+                  max={10}
+                  value={yearsAhead}
+                  onChange={(e) => setYearsAhead(Number(e.target.value))}
+                  className="h-8 text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {yearsAhead} lançamentos anuais serão criados automaticamente.
+                </p>
+              </div>
+            )}
+          </div>
+
           <DialogFooter>
             <Button type="submit" disabled={mutation.isPending} className="w-full">
-              {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
+              {mutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : recurrenceType !== "none" ? (
+                `Criar ${recurrenceCount} lançamentos`
+              ) : (
+                "Salvar"
+              )}
             </Button>
           </DialogFooter>
         </form>

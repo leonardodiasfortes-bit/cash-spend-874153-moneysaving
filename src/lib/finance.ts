@@ -1,8 +1,9 @@
-import { format, isAfter, isBefore, addDays, startOfMonth, endOfMonth } from "date-fns";
+import { format, isAfter, isBefore, addDays, addMonths, addYears, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export type TxType = "income" | "expense";
 export type ExpenseStatus = "paid" | "pending";
+export type RecurrenceType = "none" | "monthly" | "yearly" | "installment";
 export type AccountType = "checking" | "savings" | "credit_card" | "wallet" | "investment";
 
 export interface Account {
@@ -44,7 +45,17 @@ export interface Transaction {
   transaction_date: string;
   due_date: string | null;
   status: ExpenseStatus | null;
+  recurrence_type: RecurrenceType;
+  installment_current: number | null;
+  installment_total: number | null;
+  recurrence_group_id: string | null;
   created_at: string;
+}
+
+export function offsetDate(dateStr: string, type: Exclude<RecurrenceType, "none">, steps: number): string {
+  const base = new Date(dateStr + "T00:00:00");
+  const result = type === "yearly" ? addYears(base, steps) : addMonths(base, steps);
+  return format(result, "yyyy-MM-dd");
 }
 
 export const brl = (n: number) =>

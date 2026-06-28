@@ -88,6 +88,10 @@ export type Database = {
           description: string
           due_date: string | null
           id: string
+          installment_current: number | null
+          installment_total: number | null
+          recurrence_group_id: string | null
+          recurrence_type: Database["public"]["Enums"]["recurrence_type"]
           status: Database["public"]["Enums"]["expense_status"] | null
           transaction_date: string
           type: Database["public"]["Enums"]["transaction_type"]
@@ -101,6 +105,10 @@ export type Database = {
           description: string
           due_date?: string | null
           id?: string
+          installment_current?: number | null
+          installment_total?: number | null
+          recurrence_group_id?: string | null
+          recurrence_type?: Database["public"]["Enums"]["recurrence_type"]
           status?: Database["public"]["Enums"]["expense_status"] | null
           transaction_date?: string
           type: Database["public"]["Enums"]["transaction_type"]
@@ -114,6 +122,10 @@ export type Database = {
           description?: string
           due_date?: string | null
           id?: string
+          installment_current?: number | null
+          installment_total?: number | null
+          recurrence_group_id?: string | null
+          recurrence_type?: Database["public"]["Enums"]["recurrence_type"]
           status?: Database["public"]["Enums"]["expense_status"] | null
           transaction_date?: string
           type?: Database["public"]["Enums"]["transaction_type"]
@@ -165,14 +177,10 @@ export type Database = {
       }
     }
     Enums: {
-      account_type:
-        | "checking"
-        | "savings"
-        | "credit_card"
-        | "wallet"
-        | "investment"
+      account_type: "checking" | "savings" | "credit_card" | "wallet" | "investment"
       app_role: "admin" | "moderator" | "user"
       expense_status: "paid" | "pending"
+      recurrence_type: "none" | "monthly" | "yearly" | "installment"
       transaction_type: "income" | "expense"
     }
     CompositeTypes: {
@@ -310,6 +318,7 @@ export const Constants = {
       ],
       app_role: ["admin", "moderator", "user"],
       expense_status: ["paid", "pending"],
+      recurrence_type: ["none", "monthly", "yearly", "installment"],
       transaction_type: ["income", "expense"],
     },
   },

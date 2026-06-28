@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   LayoutDashboard,
   CreditCard,
+  BarChart2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -20,6 +21,7 @@ import {
   brl,
   dueAlert,
   monthRange,
+  type Account,
   type Category,
   type Transaction,
 } from "@/lib/finance";
@@ -28,6 +30,7 @@ import { TransactionForm } from "@/components/finance/TransactionForm";
 import { TransactionList } from "@/components/finance/TransactionList";
 import { DailyCashFlow, ExpenseByCategory } from "@/components/finance/Charts";
 import { AccountsTab } from "@/components/finance/AccountsTab";
+import { ReportsTab } from "@/components/finance/ReportsTab";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -36,12 +39,24 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-type Tab = "overview" | "accounts";
+type Tab = "overview" | "accounts" | "reports";
 
 function Dashboard() {
   const { user } = AuthLayoutRoute.useRouteContext();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("overview");
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ["accounts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("*")
+        .order("name");
+      if (error) throw error;
+      return data as Account[];
+    },
+  });
 
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
@@ -130,6 +145,12 @@ function Dashboard() {
             icon={<CreditCard className="h-3.5 w-3.5" />}
             label="Contas & Cartões"
           />
+          <TabButton
+            active={tab === "reports"}
+            onClick={() => setTab("reports")}
+            icon={<BarChart2 className="h-3.5 w-3.5" />}
+            label="Relatórios"
+          />
         </div>
       </header>
 
@@ -206,8 +227,10 @@ function Dashboard() {
               )}
             </section>
           </>
-        ) : (
+        ) : tab === "accounts" ? (
           <AccountsTab userId={user.id} />
+        ) : (
+          <ReportsTab transactions={transactions} categories={categories} accounts={accounts} />
         )}
       </main>
     </div>
