@@ -14,6 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Landmark,
+  Tag,
+  BrainCircuit,
 } from "lucide-react";
 import { addMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -37,6 +39,8 @@ import { AccountsTab } from "@/components/finance/AccountsTab";
 import { ReportsTab } from "@/components/finance/ReportsTab";
 import { TransactionsTab } from "@/components/finance/TransactionsTab";
 import { InvestmentsTab } from "@/components/finance/InvestmentsTab";
+import { CategoriesTab } from "@/components/finance/CategoriesTab";
+import { AIAnalysisTab } from "@/components/finance/AIAnalysisTab";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -45,7 +49,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-type Tab = "overview" | "transactions" | "accounts" | "investments" | "reports";
+type Tab = "overview" | "transactions" | "accounts" | "investments" | "categories" | "reports" | "ai";
 
 function Dashboard() {
   const { user } = AuthLayoutRoute.useRouteContext();
@@ -165,10 +169,22 @@ function Dashboard() {
             label="Investimentos"
           />
           <TabButton
+            active={tab === "categories"}
+            onClick={() => setTab("categories")}
+            icon={<Tag className="h-3.5 w-3.5" />}
+            label="Categorias"
+          />
+          <TabButton
             active={tab === "reports"}
             onClick={() => setTab("reports")}
             icon={<BarChart2 className="h-3.5 w-3.5" />}
             label="Relatórios"
+          />
+          <TabButton
+            active={tab === "ai"}
+            onClick={() => setTab("ai")}
+            icon={<BrainCircuit className="h-3.5 w-3.5" />}
+            label="IA"
           />
         </div>
       </header>
@@ -283,8 +299,12 @@ function Dashboard() {
           <AccountsTab userId={user.id} />
         ) : tab === "investments" ? (
           <InvestmentsTab accounts={accounts} onAddAccount={() => setTab("accounts")} />
-        ) : (
+        ) : tab === "categories" ? (
+          <CategoriesTab userId={user.id} />
+        ) : tab === "reports" ? (
           <ReportsTab transactions={transactions} categories={categories} accounts={accounts} />
+        ) : (
+          <AIAnalysisTab transactions={transactions} categories={categories} accounts={accounts} />
         )}
       </main>
     </div>
