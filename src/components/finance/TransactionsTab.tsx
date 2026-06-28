@@ -67,7 +67,9 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
     if (refDate) {
       const { start, end } = monthRange(refDate);
       list = list.filter((t) => {
-        const d = new Date(t.transaction_date + "T00:00:00");
+        // Use due_date when present (expenses with vencimento), else transaction_date
+        const ref = t.due_date ?? t.transaction_date;
+        const d = new Date(ref + "T00:00:00");
         return d >= start && d <= end;
       });
     }
