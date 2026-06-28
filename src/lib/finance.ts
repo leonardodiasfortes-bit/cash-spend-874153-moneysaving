@@ -45,10 +45,10 @@ export interface Transaction {
   transaction_date: string;
   due_date: string | null;
   status: ExpenseStatus | null;
-  recurrence_type: RecurrenceType;
-  installment_current: number | null;
-  installment_total: number | null;
-  recurrence_group_id: string | null;
+  recurrence_type?: RecurrenceType;
+  installment_current?: number | null;
+  installment_total?: number | null;
+  recurrence_group_id?: string | null;
   created_at: string;
 }
 
