@@ -3,6 +3,27 @@ import { ptBR } from "date-fns/locale";
 
 export type TxType = "income" | "expense";
 export type ExpenseStatus = "paid" | "pending";
+export type AccountType = "checking" | "savings" | "credit_card" | "wallet" | "investment";
+
+export interface Account {
+  id: string;
+  user_id: string;
+  name: string;
+  type: AccountType;
+  balance: number;
+  credit_limit: number | null;
+  color: string | null;
+  icon: string | null;
+  created_at: string;
+}
+
+export const ACCOUNT_LABELS: Record<AccountType, string> = {
+  checking: "Conta Corrente",
+  savings: "Poupança",
+  credit_card: "Cartão de Crédito",
+  wallet: "Carteira",
+  investment: "Investimento",
+};
 
 export interface Category {
   id: string;
