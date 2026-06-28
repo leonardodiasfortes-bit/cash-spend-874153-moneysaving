@@ -239,10 +239,12 @@ function DREView({ transactions, categories }: { transactions: Transaction[]; ca
 
   const { incomeRows, expenseRows, totalIncome, totalExpense, resultado } = useMemo(() => {
     const filtered = transactions.filter((t) => {
-      const d = new Date(t.transaction_date + "T00:00:00");
+      const refStr = t.due_date ?? t.transaction_date;
+      const d = new Date(refStr + "T00:00:00");
       if (period === "annual") return d.getFullYear() === year;
       return d.getFullYear() === year && d.getMonth() === month;
     });
+
 
     const catMap = new Map(categories.map((c) => [c.id, c]));
     const incomeMap = new Map<string, number>();
