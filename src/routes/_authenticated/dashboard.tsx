@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   CreditCard,
   BarChart2,
+  List,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -33,6 +34,7 @@ import { TransactionList } from "@/components/finance/TransactionList";
 import { DailyCashFlow, ExpenseByCategory } from "@/components/finance/Charts";
 import { AccountsTab } from "@/components/finance/AccountsTab";
 import { ReportsTab } from "@/components/finance/ReportsTab";
+import { TransactionsTab } from "@/components/finance/TransactionsTab";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -41,7 +43,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-type Tab = "overview" | "accounts" | "reports";
+type Tab = "overview" | "transactions" | "accounts" | "reports";
 
 function Dashboard() {
   const { user } = AuthLayoutRoute.useRouteContext();
@@ -116,8 +118,6 @@ function Dashboard() {
   }
 
   const monthLabel = format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR });
-  const isCurrentMonth =
-    format(selectedMonth, "yyyy-MM") === format(new Date(), "yyyy-MM");
 
   return (
     <div className="min-h-screen bg-background">
@@ -143,6 +143,12 @@ function Dashboard() {
             onClick={() => setTab("overview")}
             icon={<LayoutDashboard className="h-3.5 w-3.5" />}
             label="Painel"
+          />
+          <TabButton
+            active={tab === "transactions"}
+            onClick={() => setTab("transactions")}
+            icon={<List className="h-3.5 w-3.5" />}
+            label="Transações"
           />
           <TabButton
             active={tab === "accounts"}
@@ -183,7 +189,6 @@ function Dashboard() {
                     size="icon"
                     className="h-6 w-6"
                     onClick={() => setSelectedMonth((m) => addMonths(m, 1))}
-                    disabled={isCurrentMonth}
                   >
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Button>
@@ -239,21 +244,33 @@ function Dashboard() {
               </div>
             </section>
 
-            {/* Timeline */}
+            {/* Quick list - top 5 do mês */}
             <section className="rounded-2xl border bg-card p-5">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-semibold">Histórico</h2>
-                <span className="text-xs text-muted-foreground">
-                  {stats.monthTx.length} transação(ões)
-                </span>
+                <h2 className="text-sm font-semibold">Últimas do mês</h2>
+                <button
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => setTab("transactions")}
+                >
+                  Ver todas →
+                </button>
               </div>
               {isLoading ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">Carregando…</div>
+                <div className="py-8 text-center text-sm text-muted-foreground">Carregando…</div>
               ) : (
-                <TransactionList transactions={stats.monthTx} categories={categories} />
+                <TransactionList
+                  transactions={stats.monthTx.slice(0, 8)}
+                  categories={categories}
+                />
               )}
             </section>
           </>
+        ) : tab === "transactions" ? (
+          <TransactionsTab
+            transactions={transactions}
+            categories={categories}
+            isLoading={isLoading}
+          />
         ) : tab === "accounts" ? (
           <AccountsTab userId={user.id} />
         ) : (
