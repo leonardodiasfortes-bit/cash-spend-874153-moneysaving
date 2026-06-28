@@ -112,6 +112,7 @@ function suggestCategoryId(title: string, categories: Category[]): string | null
 
 interface ImportRow extends RawRow {
   id: string;
+  dueDate: string;
   selected: boolean;
   categoryId: string | null;
   isPayment: boolean;
@@ -122,6 +123,7 @@ interface FileTab {
   id: string;
   filename: string;
   label: string;
+  dueDate: string;
   rows: ImportRow[];
 }
 
@@ -164,22 +166,27 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
         continue;
       }
 
+      // Due date from filename (e.g. Nubank_2026-08-02.csv → "2026-08-02")
       const dates = parsed.map((r) => r.date).sort();
+      const dueDate = file.name.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ?? dates[dates.length - 1];
+
+      // Query existing transactions on the due date (that's what we'll save)
       const { data: existing = [] } = await supabase
         .from("transactions")
         .select("transaction_date, description, amount")
-        .gte("transaction_date", dates[0])
-        .lte("transaction_date", dates[dates.length - 1]);
+        .eq("transaction_date", dueDate);
 
       const existingSet = buildExistingSet((existing ?? []) as Transaction[]);
       const tabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
       const rows: ImportRow[] = parsed.map((r, i) => {
         const isPayment = r.amount < 0 || r.title.toLowerCase().includes("pagamento recebido");
-        const isDuplicate = !isPayment && existingSet.has(fingerprint(r.date, r.title, r.amount));
+        // Fingerprint uses dueDate because that's the transaction_date we'll store
+        const isDuplicate = !isPayment && existingSet.has(fingerprint(dueDate, r.title, r.amount));
         return {
           ...r,
           id: `${tabId}-${i}`,
+          dueDate,
           selected: !isPayment && !isDuplicate,
           categoryId: isPayment ? null : suggestCategoryId(r.title, categories),
           isPayment,
@@ -187,7 +194,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
         };
       });
 
-      newTabs.push({ id: tabId, filename: file.name, label: extractLabel(file.name), rows });
+      newTabs.push({ id: tabId, filename: file.name, label: extractLabel(file.name), dueDate, rows });
     }
 
     if (newTabs.length) {
@@ -254,7 +261,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
         amount: Math.abs(r.amount),
         description: r.title,
         category_id: r.categoryId,
-        transaction_date: r.date,
+        transaction_date: r.dueDate,
         status: "paid" as const,
         user_id: userId,
       }));
@@ -363,6 +370,8 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
                       <span>{activeTab.rows.length} linhas</span>
                       <span>·</span>
                       <span className="text-foreground font-medium">{activeSelected.length} selecionadas</span>
+                      <span>·</span>
+                      <span className="text-primary font-medium">venc. {activeTab.dueDate}</span>
                       {activeDupCount > 0 && (
                         <>
                           <span>·</span>
@@ -395,7 +404,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
                       <thead className="bg-muted/50">
                         <tr>
                           <th className="w-8 px-3 py-2" />
-                          <th className="px-3 py-2 text-left text-muted-foreground font-medium">Data</th>
+                          <th className="px-3 py-2 text-left text-muted-foreground font-medium">Data compra</th>
                           <th className="px-3 py-2 text-left text-muted-foreground font-medium">Descrição</th>
                           <th className="px-3 py-2 text-left text-muted-foreground font-medium">Categoria</th>
                           <th className="px-3 py-2 text-right text-muted-foreground font-medium">Valor</th>
