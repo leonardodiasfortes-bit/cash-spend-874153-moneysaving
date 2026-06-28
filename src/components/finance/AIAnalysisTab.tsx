@@ -286,7 +286,7 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
               </div>
               {!apiKey && (
                 <p className="text-xs text-warning font-medium">
-                  Configure sua chave Anthropic acima para começar.
+                  Configure sua chave Gemini acima para começar.
                 </p>
               )}
             </div>
@@ -359,7 +359,7 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), send(input))}
-            placeholder={apiKey ? "Pergunte algo sobre suas finanças…" : "Configure a chave Anthropic para começar"}
+            placeholder={apiKey ? "Pergunte algo sobre suas finanças…" : "Configure a chave Gemini para começar"}
             disabled={!apiKey || loading}
             className="flex-1"
           />

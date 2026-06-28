@@ -26,6 +26,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const NOBODY = "__none__";
+
 const schema = z.object({
   amount: z.coerce.number().positive("Informe um valor maior que zero"),
   description: z.string().trim().min(1, "Descreva a transação"),
@@ -49,7 +51,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
   const [transactionDate, setTransactionDate] = useState(tx.transaction_date);
   const [dueDate, setDueDate] = useState(tx.due_date ?? "");
   const [status, setStatus] = useState<"paid" | "pending">(tx.status ?? "pending");
-  const [person, setPerson] = useState(() => getPersonMap()[tx.id] ?? "");
+  const [person, setPerson] = useState(() => getPersonMap()[tx.id] || NOBODY);
 
   const members = getMembers();
 
@@ -61,7 +63,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
       setTransactionDate(tx.transaction_date);
       setDueDate(tx.due_date ?? "");
       setStatus(tx.status ?? "pending");
-      setPerson(getPersonMap()[tx.id] ?? "");
+      setPerson(getPersonMap()[tx.id] || NOBODY);
     }
   }, [open, tx]);
 
@@ -87,7 +89,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
       if (error) throw error;
     },
     onSuccess: () => {
-      savePerson(tx.id, person);
+      savePerson(tx.id, person === NOBODY ? null : person);
       qc.invalidateQueries({ queryKey: ["transactions"] });
       toast.success("Transação atualizada!");
       onClose();
@@ -151,7 +153,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
                   <SelectValue placeholder="Selecione a pessoa" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— Ninguém —</SelectItem>
+                  <SelectItem value={NOBODY}>— Ninguém —</SelectItem>
                   {members.map((m) => (
                     <SelectItem key={m} value={m}>{m}</SelectItem>
                   ))}
