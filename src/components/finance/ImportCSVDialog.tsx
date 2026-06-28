@@ -262,6 +262,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
         description: r.title,
         category_id: r.categoryId,
         transaction_date: r.dueDate,
+        due_date: r.dueDate,
         status: "paid" as const,
         user_id: userId,
       }));
