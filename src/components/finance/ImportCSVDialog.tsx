@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Upload, FileText, Loader2, X, AlertCircle } from "lucide-react";
+import { Upload, FileText, Loader2, X, AlertCircle, CopyX } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
-import { type Category } from "@/lib/finance";
+import { type Category, type Transaction } from "@/lib/finance";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -63,6 +63,20 @@ function parseNubankCSV(text: string): RawRow[] {
   return rows;
 }
 
+// ── Deduplication fingerprint ─────────────────────────────────────────────────
+
+function fingerprint(date: string, description: string, amount: number): string {
+  return `${date}|${description.trim().toLowerCase()}|${Math.abs(amount).toFixed(2)}`;
+}
+
+function buildExistingSet(transactions: Transaction[]): Set<string> {
+  const set = new Set<string>();
+  for (const t of transactions) {
+    set.add(fingerprint(t.transaction_date, t.description, Number(t.amount)));
+  }
+  return set;
+}
+
 // ── Category suggestion ───────────────────────────────────────────────────────
 
 const KEYWORD_MAP: { keywords: string[]; cat: string }[] = [
@@ -98,6 +112,7 @@ interface ImportRow extends RawRow {
   selected: boolean;
   categoryId: string | null;
   isPayment: boolean;
+  isDuplicate: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -112,6 +127,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [filename, setFilename] = useState("");
+  const [checking, setChecking] = useState(false);
   const qc = useQueryClient();
 
   const { data: categories = [] } = useQuery({
@@ -125,26 +141,49 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
 
   const expenseCategories = categories.filter((c) => c.type === "expense");
 
-  function handleFile(file: File) {
+  async function handleFile(file: File) {
     setFilename(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const parsed = parseNubankCSV(text);
-      if (!parsed.length) { toast.error("Nenhuma transação encontrada no arquivo."); return; }
-      const mapped: ImportRow[] = parsed.map((r, i) => {
-        const isPayment = r.amount < 0 || r.title.toLowerCase().includes("pagamento recebido");
-        return {
-          ...r,
-          id: i,
-          selected: !isPayment,
-          categoryId: isPayment ? null : suggestCategoryId(r.title, categories),
-          isPayment,
-        };
-      });
-      setRows(mapped);
-    };
-    reader.readAsText(file, "utf-8");
+    setChecking(true);
+    const text = await file.text();
+    const parsed = parseNubankCSV(text);
+    if (!parsed.length) {
+      toast.error("Nenhuma transação encontrada no arquivo.");
+      setChecking(false);
+      return;
+    }
+
+    // Fetch existing transactions that overlap the CSV date range
+    const dates = parsed.map((r) => r.date).sort();
+    const minDate = dates[0];
+    const maxDate = dates[dates.length - 1];
+    const { data: existing = [] } = await supabase
+      .from("transactions")
+      .select("transaction_date, description, amount")
+      .gte("transaction_date", minDate)
+      .lte("transaction_date", maxDate);
+
+    const existingSet = buildExistingSet((existing ?? []) as Transaction[]);
+
+    const mapped: ImportRow[] = parsed.map((r, i) => {
+      const isPayment = r.amount < 0 || r.title.toLowerCase().includes("pagamento recebido");
+      const isDuplicate = !isPayment && existingSet.has(fingerprint(r.date, r.title, r.amount));
+      return {
+        ...r,
+        id: i,
+        selected: !isPayment && !isDuplicate,
+        categoryId: isPayment ? null : suggestCategoryId(r.title, categories),
+        isPayment,
+        isDuplicate,
+      };
+    });
+
+    setRows(mapped);
+    setChecking(false);
+
+    const dupCount = mapped.filter((r) => r.isDuplicate).length;
+    if (dupCount > 0) {
+      toast.warning(`${dupCount} transação(ões) já existem e foram desmarcadas.`);
+    }
   }
 
   function toggle(id: number) {
@@ -156,11 +195,14 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
   }
 
   function toggleAll(val: boolean) {
+    // Only toggle non-payment rows; duplicates follow the val (user can force-import all)
     setRows((prev) => prev.map((r) => r.isPayment ? r : { ...r, selected: val }));
   }
 
+  const importable = rows.filter((r) => !r.isPayment);
   const selected = rows.filter((r) => r.selected);
-  const allSelected = selected.length === rows.filter((r) => !r.isPayment).length;
+  const dupCount = rows.filter((r) => r.isDuplicate).length;
+  const allSelected = selected.length === importable.length;
 
   const importMutation = useMutation({
     mutationFn: async () => {
@@ -207,8 +249,12 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {/* Drop zone */}
-          {!rows.length ? (
+          {checking ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-sm text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              Verificando duplicatas…
+            </div>
+          ) : !rows.length ? (
             <label
               className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border bg-muted/20 py-12 cursor-pointer hover:bg-muted/40 transition-colors"
               onDragOver={(e) => e.preventDefault()}
@@ -218,7 +264,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
               <div className="text-center">
                 <p className="text-sm font-medium">Arraste o CSV do Nubank aqui</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Exporte em: Nubank app → Cartão de crédito → Exportar fatura
+                  Nubank app → Cartão de crédito → Exportar fatura → CSV
                 </p>
               </div>
               <input ref={fileRef} type="file" accept=".csv" className="hidden"
@@ -226,17 +272,26 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
             </label>
           ) : (
             <>
-              {/* File info + select all */}
+              {/* File info bar */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <FileText className="h-3.5 w-3.5" />
+                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                  <FileText className="h-3.5 w-3.5 shrink-0" />
                   <span>{filename}</span>
                   <span>·</span>
                   <span>{rows.length} linhas</span>
                   <span>·</span>
                   <span className="text-foreground font-medium">{selected.length} selecionadas</span>
+                  {dupCount > 0 && (
+                    <>
+                      <span>·</span>
+                      <span className="flex items-center gap-1 text-warning font-medium">
+                        <CopyX className="h-3 w-3" />
+                        {dupCount} duplicada(s)
+                      </span>
+                    </>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <Button variant="ghost" size="sm" className="h-7 text-xs"
                     onClick={() => toggleAll(!allSelected)}>
                     {allSelected ? "Desmarcar todas" : "Selecionar todas"}
@@ -248,12 +303,23 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
                 </div>
               </div>
 
+              {/* Duplicate notice */}
+              {dupCount > 0 && (
+                <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-xs text-warning-foreground/90">
+                  <CopyX className="h-3.5 w-3.5 shrink-0 mt-0.5 text-warning" />
+                  <span>
+                    <strong>{dupCount}</strong> linha(s) com mesmo nome e valor já existem no sistema e foram desmarcadas.
+                    Marque manualmente se quiser importar mesmo assim.
+                  </span>
+                </div>
+              )}
+
               {/* Table */}
               <div className="rounded-xl border overflow-hidden">
                 <table className="w-full text-xs">
                   <thead className="bg-muted/50">
                     <tr>
-                      <th className="w-8 px-3 py-2 text-left"></th>
+                      <th className="w-8 px-3 py-2"></th>
                       <th className="px-3 py-2 text-left text-muted-foreground font-medium">Data</th>
                       <th className="px-3 py-2 text-left text-muted-foreground font-medium">Descrição</th>
                       <th className="px-3 py-2 text-left text-muted-foreground font-medium">Categoria</th>
@@ -266,7 +332,9 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
                         key={row.id}
                         className={`transition-colors ${
                           row.isPayment
-                            ? "opacity-40 bg-muted/20"
+                            ? "opacity-35 bg-muted/20"
+                            : row.isDuplicate
+                            ? "bg-warning/5"
                             : row.selected
                             ? "bg-background hover:bg-muted/30"
                             : "bg-muted/10 opacity-60"
@@ -289,8 +357,15 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
                         <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
                           {row.date}
                         </td>
-                        <td className="px-3 py-2 max-w-[220px] truncate" title={row.title}>
-                          {row.title}
+                        <td className="px-3 py-2 max-w-[200px]">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="truncate" title={row.title}>{row.title}</span>
+                            {row.isDuplicate && (
+                              <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-warning/20 text-warning border border-warning/30 whitespace-nowrap">
+                                já importado
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2 min-w-[140px]">
                           {!row.isPayment && row.selected && (
@@ -315,7 +390,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
                           {row.isPayment ? (
                             <span className="text-income text-[10px]">pagamento</span>
                           ) : (
-                            <span className="text-expense">
+                            <span className={row.isDuplicate ? "text-muted-foreground" : "text-expense"}>
                               R$ {Math.abs(row.amount).toFixed(2).replace(".", ",")}
                             </span>
                           )}
@@ -330,7 +405,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
         </div>
 
         {/* Footer */}
-        {rows.length > 0 && (
+        {rows.length > 0 && !checking && (
           <div className="px-6 py-4 border-t bg-muted/20 shrink-0 flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
               Total selecionado:{" "}
@@ -350,7 +425,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
                 {importMutation.isPending ? (
                   <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Importando…</>
                 ) : (
-                  `Importar ${selected.length} transações`
+                  `Importar ${selected.length} transação(ões)`
                 )}
               </Button>
             </div>
