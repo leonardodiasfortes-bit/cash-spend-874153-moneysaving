@@ -42,7 +42,8 @@ export function DailyCashFlow({
       let income = 0;
       let expense = 0;
       for (const t of transactions) {
-        if (t.transaction_date === key) {
+        const refStr = t.due_date ?? t.transaction_date;
+        if (refStr === key) {
           if (t.type === "income") income += Number(t.amount);
           else expense += Number(t.amount);
         }
