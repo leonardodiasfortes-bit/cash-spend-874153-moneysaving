@@ -16,6 +16,7 @@ import {
   Landmark,
   Tag,
   BrainCircuit,
+  Settings,
 } from "lucide-react";
 import { addMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -41,6 +42,7 @@ import { TransactionsTab } from "@/components/finance/TransactionsTab";
 import { InvestmentsTab } from "@/components/finance/InvestmentsTab";
 import { CategoriesTab } from "@/components/finance/CategoriesTab";
 import { AIAnalysisTab } from "@/components/finance/AIAnalysisTab";
+import { SettingsTab } from "@/components/finance/SettingsTab";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -49,7 +51,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-type Tab = "overview" | "transactions" | "accounts" | "investments" | "categories" | "reports" | "ai";
+type Tab = "overview" | "transactions" | "accounts" | "investments" | "categories" | "reports" | "ai" | "settings";
 
 function Dashboard() {
   const { user } = AuthLayoutRoute.useRouteContext();
@@ -186,6 +188,12 @@ function Dashboard() {
             icon={<BrainCircuit className="h-3.5 w-3.5" />}
             label="IA"
           />
+          <TabButton
+            active={tab === "settings"}
+            onClick={() => setTab("settings")}
+            icon={<Settings className="h-3.5 w-3.5" />}
+            label="Configurações"
+          />
         </div>
       </header>
 
@@ -303,8 +311,10 @@ function Dashboard() {
           <CategoriesTab userId={user.id} />
         ) : tab === "reports" ? (
           <ReportsTab transactions={transactions} categories={categories} accounts={accounts} />
-        ) : (
+        ) : tab === "ai" ? (
           <AIAnalysisTab transactions={transactions} categories={categories} accounts={accounts} />
+        ) : (
+          <SettingsTab userId={user.id} />
         )}
       </main>
     </div>
