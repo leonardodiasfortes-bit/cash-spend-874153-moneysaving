@@ -302,6 +302,7 @@ function Dashboard() {
             transactions={transactions}
             categories={categories}
             isLoading={isLoading}
+            userId={user.id}
           />
         ) : tab === "accounts" ? (
           <AccountsTab userId={user.id} />

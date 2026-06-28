@@ -1,25 +1,28 @@
 import { useMemo, useState } from "react";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X, FileUp } from "lucide-react";
 
 import { monthRange, brl, type Category, type Transaction } from "@/lib/finance";
 import { getMembers, getPersonMap } from "@/lib/family";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TransactionList } from "./TransactionList";
+import { ImportCSVDialog } from "./ImportCSVDialog";
 
 interface Props {
   transactions: Transaction[];
   categories: Category[];
   isLoading: boolean;
+  userId: string;
 }
 
-export function TransactionsTab({ transactions, categories, isLoading }: Props) {
+export function TransactionsTab({ transactions, categories, isLoading, userId }: Props) {
   const [refDate, setRefDate] = useState<Date | null>(null);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
   const [personFilter, setPersonFilter] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
   const members = getMembers();
   const personMap = getPersonMap();
 
@@ -67,6 +70,8 @@ export function TransactionsTab({ transactions, categories, isLoading }: Props) 
 
   return (
     <div className="space-y-4">
+      <ImportCSVDialog open={importOpen} onClose={() => setImportOpen(false)} userId={userId} />
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Month nav */}
@@ -141,6 +146,17 @@ export function TransactionsTab({ transactions, categories, isLoading }: Props) 
             ))}
           </div>
         )}
+
+        {/* Import CSV button */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 text-xs"
+          onClick={() => setImportOpen(true)}
+        >
+          <FileUp className="h-3.5 w-3.5" />
+          Importar extrato
+        </Button>
 
         {/* Search */}
         <div className="relative flex-1 min-w-[180px]">
