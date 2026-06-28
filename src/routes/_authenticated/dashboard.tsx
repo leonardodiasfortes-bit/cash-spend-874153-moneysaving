@@ -10,8 +10,10 @@ import {
   LayoutDashboard,
   CreditCard,
   BarChart2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
-import { format } from "date-fns";
+import { addMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 
@@ -45,6 +47,7 @@ function Dashboard() {
   const { user } = AuthLayoutRoute.useRouteContext();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("overview");
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -84,7 +87,7 @@ function Dashboard() {
   });
 
   const stats = useMemo(() => {
-    const { start, end } = monthRange();
+    const { start, end } = monthRange(selectedMonth);
     let income = 0;
     let expense = 0;
     let balance = 0;
@@ -104,7 +107,7 @@ function Dashboard() {
       if (dueAlert(t)) alerts++;
     }
     return { income, expense, balance, alerts, monthTx };
-  }, [transactions]);
+  }, [transactions, selectedMonth]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -112,7 +115,9 @@ function Dashboard() {
     navigate({ to: "/auth", replace: true });
   }
 
-  const monthLabel = format(new Date(), "MMMM 'de' yyyy", { locale: ptBR });
+  const monthLabel = format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR });
+  const isCurrentMonth =
+    format(selectedMonth, "yyyy-MM") === format(new Date(), "yyyy-MM");
 
   return (
     <div className="min-h-screen bg-background">
@@ -159,9 +164,31 @@ function Dashboard() {
           <>
             {/* Stats */}
             <section>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-3">
-                Resumo · {monthLabel}
-              </p>
+              <div className="flex items-center gap-1 mb-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Resumo</p>
+                <div className="ml-auto flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setSelectedMonth((m) => addMonths(m, -1))}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="text-xs font-medium px-1 capitalize min-w-[130px] text-center">
+                    {monthLabel}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setSelectedMonth((m) => addMonths(m, 1))}
+                    disabled={isCurrentMonth}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <StatCard
                   label="Saldo total"
@@ -201,7 +228,7 @@ function Dashboard() {
                   <h2 className="text-sm font-semibold">Fluxo de caixa diário</h2>
                   <span className="text-xs text-muted-foreground">{monthLabel}</span>
                 </div>
-                <DailyCashFlow transactions={stats.monthTx} />
+                <DailyCashFlow transactions={stats.monthTx} refDate={selectedMonth} />
               </div>
               <div className="lg:col-span-2 rounded-2xl border bg-card p-5">
                 <div className="flex items-baseline justify-between mb-3">
@@ -217,13 +244,13 @@ function Dashboard() {
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-sm font-semibold">Histórico</h2>
                 <span className="text-xs text-muted-foreground">
-                  {transactions.length} transação(ões)
+                  {stats.monthTx.length} transação(ões)
                 </span>
               </div>
               {isLoading ? (
                 <div className="py-12 text-center text-sm text-muted-foreground">Carregando…</div>
               ) : (
-                <TransactionList transactions={transactions} categories={categories} />
+                <TransactionList transactions={stats.monthTx} categories={categories} />
               )}
             </section>
           </>

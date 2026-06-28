@@ -1,4 +1,5 @@
-import { ArrowDownRight, ArrowUpRight, AlertTriangle, Clock, Check, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { ArrowDownRight, ArrowUpRight, AlertTriangle, Clock, Check, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -7,6 +8,7 @@ import { brl, dueAlert, fmtDate, type Category, type Transaction } from "@/lib/f
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { TransactionEditDialog } from "./TransactionEditDialog";
 
 interface Props {
   transactions: Transaction[];
@@ -14,6 +16,7 @@ interface Props {
 }
 
 export function TransactionList({ transactions, categories }: Props) {
+  const [editing, setEditing] = useState<Transaction | null>(null);
   const qc = useQueryClient();
   const cats = new Map(categories.map((c) => [c.id, c]));
 
@@ -48,6 +51,15 @@ export function TransactionList({ transactions, categories }: Props) {
   }
 
   return (
+    <>
+    {editing && (
+      <TransactionEditDialog
+        tx={editing}
+        categories={categories}
+        open={!!editing}
+        onClose={() => setEditing(null)}
+      />
+    )}
     <ul className="divide-y divide-border">
       {transactions.map((tx) => {
         const cat = tx.category_id ? cats.get(tx.category_id) : null;
@@ -125,7 +137,17 @@ export function TransactionList({ transactions, categories }: Props) {
               <Button
                 size="icon"
                 variant="ghost"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                title="Editar"
+                onClick={() => setEditing(tx)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
                 className="h-8 w-8 text-muted-foreground hover:text-expense"
+                title="Excluir"
                 onClick={() => del.mutate(tx.id)}
               >
                 <Trash2 className="h-4 w-4" />
@@ -135,5 +157,6 @@ export function TransactionList({ transactions, categories }: Props) {
         );
       })}
     </ul>
+    </>
   );
 }

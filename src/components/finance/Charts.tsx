@@ -26,9 +26,15 @@ const CHART_COLORS = [
   "var(--chart-7)",
 ];
 
-export function DailyCashFlow({ transactions }: { transactions: Transaction[] }) {
+export function DailyCashFlow({
+  transactions,
+  refDate,
+}: {
+  transactions: Transaction[];
+  refDate?: Date;
+}) {
   const data = useMemo(() => {
-    const { start, end } = monthRange();
+    const { start, end } = monthRange(refDate);
     const days = eachDayOfInterval({ start, end });
     return days.map((d) => {
       const key = format(d, "yyyy-MM-dd");
