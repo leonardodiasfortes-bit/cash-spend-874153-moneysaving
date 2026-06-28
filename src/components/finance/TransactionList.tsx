@@ -14,13 +14,16 @@ import { TransactionEditDialog } from "./TransactionEditDialog";
 interface Props {
   transactions: Transaction[];
   categories: Category[];
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
-export function TransactionList({ transactions, categories }: Props) {
+export function TransactionList({ transactions, categories, selectedIds, onToggleSelect }: Props) {
   const [editing, setEditing] = useState<Transaction | null>(null);
   const qc = useQueryClient();
   const cats = new Map(categories.map((c) => [c.id, c]));
   const personMap = getPersonMap();
+  const selectionMode = !!onToggleSelect;
 
   const del = useMutation({
     mutationFn: async (id: string) => {
@@ -70,7 +73,22 @@ export function TransactionList({ transactions, categories }: Props) {
         const person = personMap[tx.id];
 
         return (
-          <li key={tx.id} className="flex items-center gap-3 py-3 group">
+          <li
+            key={tx.id}
+            className={cn(
+              "flex items-center gap-3 py-3 group transition-colors",
+              selectionMode && selectedIds?.has(tx.id) && "bg-primary/5 rounded-xl px-2",
+            )}
+          >
+            {selectionMode && (
+              <input
+                type="checkbox"
+                checked={selectedIds?.has(tx.id) ?? false}
+                onChange={() => onToggleSelect?.(tx.id)}
+                onClick={(e) => e.stopPropagation()}
+                className="cursor-pointer accent-primary h-4 w-4 shrink-0"
+              />
+            )}
             <div
               className={cn(
                 "h-10 w-10 rounded-xl grid place-items-center shrink-0",

@@ -307,7 +307,7 @@ function Dashboard() {
         ) : tab === "accounts" ? (
           <AccountsTab userId={user.id} />
         ) : tab === "investments" ? (
-          <InvestmentsTab accounts={accounts} onAddAccount={() => setTab("accounts")} />
+          <InvestmentsTab accounts={accounts} onAddAccount={() => setTab("accounts")} userId={user.id} />
         ) : tab === "categories" ? (
           <CategoriesTab userId={user.id} />
         ) : tab === "reports" ? (

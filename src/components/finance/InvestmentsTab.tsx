@@ -9,17 +9,36 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { TrendingUp, Plus } from "lucide-react";
+import { TrendingUp, Plus, ArrowDownToLine, Loader2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { format } from "date-fns";
 
-import { brl, type Account } from "@/lib/finance";
+import { supabase } from "@/integrations/supabase/client";
+import { brl, type Account, type Category } from "@/lib/finance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Props {
   accounts: Account[];
   onAddAccount: () => void;
+  userId: string;
 }
 
 function monthlyReturn(acc: Account): number {
@@ -27,8 +46,9 @@ function monthlyReturn(acc: Account): number {
   return Number(acc.balance) * (acc.credit_limit / 100);
 }
 
-export function InvestmentsTab({ accounts, onAddAccount }: Props) {
+export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
   const investments = accounts.filter((a) => a.type === "investment");
+  const qc = useQueryClient();
 
   const totalInvested = investments.reduce((s, a) => s + Number(a.balance), 0);
   const totalMonthly = investments.reduce((s, a) => s + monthlyReturn(a), 0);
@@ -37,6 +57,60 @@ export function InvestmentsTab({ accounts, onAddAccount }: Props) {
 
   const [withdrawal, setWithdrawal] = useState("");
   const [months, setMonths] = useState(60);
+
+  // ── Retirada de rendimento ────────────────────────────────────────────────
+  const [retiradaOpen, setRetiradaOpen] = useState(false);
+  const [retAccId, setRetAccId] = useState("");
+  const [retAmount, setRetAmount] = useState("");
+  const [retDate, setRetDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [retDesc, setRetDesc] = useState("");
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("categories").select("*").order("name");
+      if (error) throw error;
+      return data as Category[];
+    },
+  });
+
+  const investCatId = categories.find((c) => c.name === "Investimentos" && c.type === "income")?.id ?? null;
+
+  const retiradaMutation = useMutation({
+    mutationFn: async () => {
+      const amount = parseFloat(retAmount.replace(",", "."));
+      if (!amount || amount <= 0) throw new Error("Valor inválido.");
+      const acc = investments.find((a) => a.id === retAccId);
+      const desc = retDesc.trim() || `Retirada de rendimento${acc ? ` — ${acc.name}` : ""}`;
+      const { error } = await supabase.from("transactions").insert({
+        type: "income",
+        amount,
+        description: desc,
+        category_id: investCatId,
+        transaction_date: retDate,
+        status: "paid",
+        user_id: userId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      toast.success("Retirada registrada como receita!");
+      setRetiradaOpen(false);
+      setRetAmount("");
+      setRetDesc("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  function openRetirada(acc?: Account) {
+    const a = acc ?? investments[0];
+    setRetAccId(a?.id ?? "");
+    setRetAmount(a ? monthlyReturn(a).toFixed(2) : "");
+    setRetDate(format(new Date(), "yyyy-MM-dd"));
+    setRetDesc("");
+    setRetiradaOpen(true);
+  }
 
   const projection = useMemo(() => {
     const w = parseFloat(withdrawal) || 0;
@@ -80,6 +154,61 @@ export function InvestmentsTab({ accounts, onAddAccount }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Retirada dialog */}
+      <Dialog open={retiradaOpen} onOpenChange={(v) => !v && setRetiradaOpen(false)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowDownToLine className="h-4 w-4" /> Registrar retirada de rendimento
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Cria uma transação de receita com o valor retirado, compondo a renda do mês.
+          </p>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Investimento</Label>
+              <Select value={retAccId} onValueChange={(v) => {
+                setRetAccId(v);
+                const a = investments.find((x) => x.id === v);
+                if (a) setRetAmount(monthlyReturn(a).toFixed(2));
+              }}>
+                <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                <SelectContent>
+                  {investments.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name} — renda est. {brl(monthlyReturn(a))}/mês
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Valor (R$)</Label>
+                <Input value={retAmount} onChange={(e) => setRetAmount(e.target.value)}
+                  placeholder="0,00" inputMode="decimal" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Data</Label>
+                <Input type="date" value={retDate} onChange={(e) => setRetDate(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Descrição (opcional)</Label>
+              <Input value={retDesc} onChange={(e) => setRetDesc(e.target.value)}
+                placeholder="Retirada de rendimento — automático" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setRetiradaOpen(false)}>Cancelar</Button>
+            <Button size="sm" disabled={retiradaMutation.isPending} onClick={() => retiradaMutation.mutate()}>
+              {retiradaMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Registrar receita"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <SummaryCard label="Total investido" value={brl(totalInvested)} tone="neutral" />
@@ -100,10 +229,13 @@ export function InvestmentsTab({ accounts, onAddAccount }: Props) {
 
       {/* Per-account list */}
       <div className="rounded-2xl border bg-card overflow-hidden">
-        <div className="px-5 py-3 border-b bg-muted/30">
+        <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/30">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Carteira de investimentos
           </p>
+          <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => openRetirada()}>
+            <ArrowDownToLine className="h-3.5 w-3.5" /> Registrar retirada
+          </Button>
         </div>
         <table className="w-full text-sm">
           <thead>

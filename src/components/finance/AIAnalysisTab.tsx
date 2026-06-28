@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
-const API_KEY_STORAGE = "anthropic_api_key";
+const API_KEY_STORAGE = "gemini_api_key";
 
 const PRESETS = [
   "Como está minha saúde financeira geral?",
@@ -162,21 +162,24 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
     }));
 
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
+      // Convert history to Gemini format (role: "user" | "model")
+      const geminiContents = apiMessages.map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: geminiContents,
+            generationConfig: { maxOutputTokens: 1500 },
+          }),
         },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 1500,
-          system: systemPrompt,
-          messages: apiMessages,
-        }),
-      });
+      );
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -184,7 +187,7 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
       }
 
       const data = await res.json();
-      const reply = data.content?.[0]?.text ?? "(sem resposta)";
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "(sem resposta)";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro desconhecido";
@@ -207,7 +210,7 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
         >
           <Key className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium flex-1">
-            {apiKey ? "Chave Anthropic configurada" : "Configurar chave Anthropic"}
+            {apiKey ? "Chave Gemini configurada" : "Configurar chave Gemini (gratuita)"}
           </span>
           <span
             className={cn(
@@ -229,9 +232,9 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
         {showKeySection && (
           <div className="px-5 pb-4 space-y-3 border-t">
             <p className="text-xs text-muted-foreground pt-3">
-              A chave é armazenada <strong>apenas no seu navegador</strong> e usada diretamente para
-              consultar o Claude. Obtenha em{" "}
-              <span className="font-mono text-primary">console.anthropic.com</span>.
+              A chave é armazenada <strong>apenas no seu navegador</strong>. O Gemini tem{" "}
+              <strong>free tier generoso</strong> (1.500 req/dia grátis). Obtenha em{" "}
+              <span className="font-mono text-primary">aistudio.google.com</span> → Get API key.
             </p>
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -239,7 +242,7 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
                   type={keyVisible ? "text" : "password"}
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
-                  placeholder="sk-ant-..."
+                  placeholder="AIza..."
                   className="pr-16 font-mono text-xs"
                 />
                 <button
