@@ -95,14 +95,11 @@ export function TransactionForm({ userId }: { userId: string }) {
       const base = { ...parsed.data, user_id: userId };
 
       if (recurrenceType === "none") {
-        const { error } = await supabase
-          .from("transactions")
-          .insert({ ...base, recurrence_type: "none" });
+        const { error } = await supabase.from("transactions").insert(base);
         if (error) throw error;
         return;
       }
 
-      const groupId = crypto.randomUUID();
       const count =
         recurrenceType === "installment"
           ? installmentTotal
@@ -119,10 +116,6 @@ export function TransactionForm({ userId }: { userId: string }) {
         transaction_date: offsetDate(base.transaction_date, recurrenceType, i),
         due_date: base.due_date ? offsetDate(base.due_date, recurrenceType, i) : null,
         status: base.status ? (i === 0 ? base.status : "pending") : null,
-        recurrence_type: recurrenceType,
-        installment_current: recurrenceType === "installment" ? i + 1 : null,
-        installment_total: recurrenceType === "installment" ? count : null,
-        recurrence_group_id: groupId,
       }));
 
       const { error } = await supabase.from("transactions").insert(rows);
