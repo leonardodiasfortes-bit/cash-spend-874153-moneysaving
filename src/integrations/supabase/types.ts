@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          balance: number
+          color: string | null
+          created_at: string
+          credit_limit: number | null
+          icon: string | null
+          id: string
+          name: string
+          type: Database["public"]["Enums"]["account_type"]
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          color?: string | null
+          created_at?: string
+          credit_limit?: number | null
+          icon?: string | null
+          id?: string
+          name: string
+          type: Database["public"]["Enums"]["account_type"]
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          color?: string | null
+          created_at?: string
+          credit_limit?: number | null
+          icon?: string | null
+          id?: string
+          name?: string
+          type?: Database["public"]["Enums"]["account_type"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -129,6 +165,12 @@ export type Database = {
       }
     }
     Enums: {
+      account_type:
+        | "checking"
+        | "savings"
+        | "credit_card"
+        | "wallet"
+        | "investment"
       app_role: "admin" | "moderator" | "user"
       expense_status: "paid" | "pending"
       transaction_type: "income" | "expense"
@@ -259,6 +301,13 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      account_type: [
+        "checking",
+        "savings",
+        "credit_card",
+        "wallet",
+        "investment",
+      ],
       app_role: ["admin", "moderator", "user"],
       expense_status: ["paid", "pending"],
       transaction_type: ["income", "expense"],
