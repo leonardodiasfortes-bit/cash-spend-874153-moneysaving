@@ -13,6 +13,7 @@ import {
   List,
   ChevronLeft,
   ChevronRight,
+  Landmark,
 } from "lucide-react";
 import { addMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -35,6 +36,7 @@ import { DailyCashFlow, ExpenseByCategory } from "@/components/finance/Charts";
 import { AccountsTab } from "@/components/finance/AccountsTab";
 import { ReportsTab } from "@/components/finance/ReportsTab";
 import { TransactionsTab } from "@/components/finance/TransactionsTab";
+import { InvestmentsTab } from "@/components/finance/InvestmentsTab";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -43,7 +45,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-type Tab = "overview" | "transactions" | "accounts" | "reports";
+type Tab = "overview" | "transactions" | "accounts" | "investments" | "reports";
 
 function Dashboard() {
   const { user } = AuthLayoutRoute.useRouteContext();
@@ -155,6 +157,12 @@ function Dashboard() {
             onClick={() => setTab("accounts")}
             icon={<CreditCard className="h-3.5 w-3.5" />}
             label="Contas & Cartões"
+          />
+          <TabButton
+            active={tab === "investments"}
+            onClick={() => setTab("investments")}
+            icon={<Landmark className="h-3.5 w-3.5" />}
+            label="Investimentos"
           />
           <TabButton
             active={tab === "reports"}
@@ -273,6 +281,8 @@ function Dashboard() {
           />
         ) : tab === "accounts" ? (
           <AccountsTab userId={user.id} />
+        ) : tab === "investments" ? (
+          <InvestmentsTab accounts={accounts} onAddAccount={() => setTab("accounts")} />
         ) : (
           <ReportsTab transactions={transactions} categories={categories} accounts={accounts} />
         )}

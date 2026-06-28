@@ -100,7 +100,10 @@ function AccountForm({
         name: form.name,
         type: form.type,
         balance: form.balance || "0",
-        credit_limit: form.type === "credit_card" && form.credit_limit ? form.credit_limit : null,
+        credit_limit:
+        (form.type === "credit_card" || form.type === "investment") && form.credit_limit
+          ? form.credit_limit
+          : null,
       });
       if (!parsed.success) throw new Error(parsed.error.issues[0].message);
 
@@ -184,6 +187,20 @@ function AccountForm({
               value={form.credit_limit}
               onChange={(e) => set("credit_limit")(e.target.value)}
               placeholder="0,00"
+            />
+          </div>
+        )}
+        {form.type === "investment" && (
+          <div className="space-y-2">
+            <Label>Taxa de rendimento (% a.m.)</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.001"
+              min="0"
+              value={form.credit_limit}
+              onChange={(e) => set("credit_limit")(e.target.value)}
+              placeholder="Ex: 0.8"
             />
           </div>
         )}
@@ -298,6 +315,20 @@ function AccountCard({ account, userId }: { account: Account; userId: string }) 
               Disponível: {brl(available ?? 0)}
             </span>
           </div>
+        </div>
+      ) : account.type === "investment" ? (
+        <div className="space-y-1">
+          <p className="text-2xl font-semibold tracking-tight tabular-nums">
+            {brl(Number(account.balance))}
+          </p>
+          {account.credit_limit != null && account.credit_limit > 0 && (
+            <div className="flex items-center justify-between text-xs mt-2">
+              <span className="text-muted-foreground">{account.credit_limit}% a.m.</span>
+              <span className="text-income font-semibold">
+                +{brl(Number(account.balance) * (account.credit_limit / 100))}/mês
+              </span>
+            </div>
+          )}
         </div>
       ) : (
         <p

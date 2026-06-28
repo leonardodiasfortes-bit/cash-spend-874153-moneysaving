@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { brl, dueAlert, fmtDate, type Category, type Transaction } from "@/lib/finance";
+import { getPersonMap } from "@/lib/family";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ export function TransactionList({ transactions, categories }: Props) {
   const [editing, setEditing] = useState<Transaction | null>(null);
   const qc = useQueryClient();
   const cats = new Map(categories.map((c) => [c.id, c]));
+  const personMap = getPersonMap();
 
   const del = useMutation({
     mutationFn: async (id: string) => {
@@ -65,6 +67,7 @@ export function TransactionList({ transactions, categories }: Props) {
         const cat = tx.category_id ? cats.get(tx.category_id) : null;
         const alert = dueAlert(tx);
         const isIncome = tx.type === "income";
+        const person = personMap[tx.id];
 
         return (
           <li key={tx.id} className="flex items-center gap-3 py-3 group">
@@ -84,6 +87,11 @@ export function TransactionList({ transactions, categories }: Props) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-medium text-sm truncate">{tx.description}</p>
+                {person && (
+                  <Badge variant="outline" className="text-[10px] font-medium gap-1 border-primary/40 text-primary">
+                    {person}
+                  </Badge>
+                )}
                 {cat && (
                   <Badge variant="secondary" className="text-[10px] font-normal">
                     {cat.icon} {cat.name}

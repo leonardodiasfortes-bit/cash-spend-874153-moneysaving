@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Loader2, Plus, RefreshCw } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Users } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { offsetDate, type Category, type RecurrenceType } from "@/lib/finance";
+import { getMembers, setMembers, savePersons, savePerson } from "@/lib/family";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,6 +67,10 @@ export function TransactionForm({ userId }: { userId: string }) {
   const [monthsAhead, setMonthsAhead] = useState(12);
   const [yearsAhead, setYearsAhead] = useState(2);
 
+  const [selectedPerson, setSelectedPerson] = useState("");
+  const [members, setMembersState] = useState<string[]>(getMembers);
+  const [newMember, setNewMember] = useState("");
+
   const qc = useQueryClient();
 
   const { data: categories = [] } = useQuery({
@@ -95,8 +100,12 @@ export function TransactionForm({ userId }: { userId: string }) {
       const base = { ...parsed.data, user_id: userId };
 
       if (recurrenceType === "none") {
-        const { error } = await supabase.from("transactions").insert(base);
+        const { data, error } = await supabase
+          .from("transactions")
+          .insert(base)
+          .select("id");
         if (error) throw error;
+        if (data?.[0]?.id && selectedPerson) savePerson(data[0].id, selectedPerson);
         return;
       }
 
@@ -118,8 +127,12 @@ export function TransactionForm({ userId }: { userId: string }) {
         status: base.status ? (i === 0 ? base.status : "pending") : null,
       }));
 
-      const { error } = await supabase.from("transactions").insert(rows);
+      const { data, error } = await supabase
+        .from("transactions")
+        .insert(rows)
+        .select("id");
       if (error) throw error;
+      if (data && selectedPerson) savePersons(data.map((r) => r.id), selectedPerson);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
@@ -138,6 +151,15 @@ export function TransactionForm({ userId }: { userId: string }) {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  function addMember() {
+    const name = newMember.trim();
+    if (!name || members.includes(name)) return;
+    const updated = [...members, name];
+    setMembersState(updated);
+    setMembers(updated);
+    setNewMember("");
+  }
+
   function resetForm() {
     setAmount("");
     setDescription("");
@@ -147,6 +169,7 @@ export function TransactionForm({ userId }: { userId: string }) {
     setInstallmentTotal(2);
     setMonthsAhead(12);
     setYearsAhead(2);
+    setSelectedPerson("");
   }
 
   const recurrenceCount =
@@ -272,6 +295,59 @@ export function TransactionForm({ userId }: { userId: string }) {
               </div>
             </div>
           )}
+
+          {/* Família */}
+          <div className="rounded-xl border bg-muted/30 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Users className="h-3.5 w-3.5 text-muted-foreground" />
+              <Label className="text-xs font-medium">Quem?</Label>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSelectedPerson("")}
+                className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                  selectedPerson === ""
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                Geral
+              </button>
+              {members.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setSelectedPerson(selectedPerson === m ? "" : m)}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                    selectedPerson === m
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            {members.length < 6 && (
+              <div className="flex gap-1">
+                <Input
+                  value={newMember}
+                  onChange={(e) => setNewMember(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addMember())}
+                  placeholder="+ Adicionar membro"
+                  className="h-7 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={addMember}
+                  className="text-xs text-primary hover:underline px-1 shrink-0"
+                >
+                  OK
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Recorrência */}
           <div className="rounded-xl border bg-muted/30 p-3 space-y-3">

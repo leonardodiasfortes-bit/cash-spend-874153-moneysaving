@@ -4,6 +4,7 @@ import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 
 import { monthRange, brl, type Category, type Transaction } from "@/lib/finance";
+import { getMembers, getPersonMap } from "@/lib/family";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TransactionList } from "./TransactionList";
@@ -15,9 +16,12 @@ interface Props {
 }
 
 export function TransactionsTab({ transactions, categories, isLoading }: Props) {
-  const [refDate, setRefDate] = useState<Date | null>(null); // null = todos
+  const [refDate, setRefDate] = useState<Date | null>(null);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
+  const [personFilter, setPersonFilter] = useState("");
+  const members = getMembers();
+  const personMap = getPersonMap();
 
   const filtered = useMemo(() => {
     let list = transactions;
@@ -34,6 +38,10 @@ export function TransactionsTab({ transactions, categories, isLoading }: Props) 
       list = list.filter((t) => t.type === typeFilter);
     }
 
+    if (personFilter) {
+      list = list.filter((t) => personMap[t.id] === personFilter);
+    }
+
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -44,7 +52,7 @@ export function TransactionsTab({ transactions, categories, isLoading }: Props) 
     }
 
     return list;
-  }, [transactions, refDate, search, typeFilter]);
+  }, [transactions, refDate, search, typeFilter, personFilter]);
 
   const monthLabel = refDate
     ? format(refDate, "MMMM 'de' yyyy", { locale: ptBR })
@@ -104,6 +112,35 @@ export function TransactionsTab({ transactions, categories, isLoading }: Props) 
             </button>
           ))}
         </div>
+
+        {/* Person filter */}
+        {members.length > 0 && (
+          <div className="flex rounded-xl border bg-card overflow-hidden text-xs">
+            <button
+              onClick={() => setPersonFilter("")}
+              className={`px-3 py-1.5 transition-colors ${
+                personFilter === ""
+                  ? "bg-primary text-primary-foreground font-medium"
+                  : "hover:bg-muted text-muted-foreground"
+              }`}
+            >
+              Todos
+            </button>
+            {members.map((m) => (
+              <button
+                key={m}
+                onClick={() => setPersonFilter(personFilter === m ? "" : m)}
+                className={`px-3 py-1.5 transition-colors ${
+                  personFilter === m
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "hover:bg-muted text-muted-foreground"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Search */}
         <div className="relative flex-1 min-w-[180px]">
