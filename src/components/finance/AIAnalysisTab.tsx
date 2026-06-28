@@ -153,11 +153,11 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
     setInput("");
     setLoading(true);
 
-    const apiMessages = newMessages.map((m) => ({
+    const apiMessages = newMessages.map((m, idx) => ({
       role: m.role,
       content:
-        m.role === "user" && newMessages.indexOf(m) === 0
-          ? `${context}\n\n---\nPergunta: ${m.content}`
+        m.role === "user" && idx === 0
+          ? `${systemPrompt}\n\n${context}\n\n---\nPergunta: ${m.content}`
           : m.content,
     }));
 
@@ -174,7 +174,6 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
             contents: geminiContents,
             generationConfig: { maxOutputTokens: 1500 },
           }),
