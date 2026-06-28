@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Upload, FileText, Loader2, X, AlertCircle, CopyX } from "lucide-react";
+import { Upload, FileText, Loader2, X, AlertCircle, CopyX, Plus } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { type Category, type Transaction } from "@/lib/finance";
@@ -44,11 +44,7 @@ function parseBRLAmount(raw: string): number {
   return neg ? -val : val;
 }
 
-interface RawRow {
-  date: string;
-  title: string;
-  amount: number;
-}
+interface RawRow { date: string; title: string; amount: number }
 
 function parseNubankCSV(text: string): RawRow[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
@@ -57,24 +53,31 @@ function parseNubankCSV(text: string): RawRow[] {
   for (const line of lines.slice(1)) {
     const cols = parseCSVLine(line);
     if (cols.length < 3) continue;
-    const amount = parseBRLAmount(cols[2]);
-    rows.push({ date: cols[0].trim(), title: cols[1].trim(), amount });
+    rows.push({ date: cols[0].trim(), title: cols[1].trim(), amount: parseBRLAmount(cols[2]) });
   }
   return rows;
 }
 
-// ── Deduplication fingerprint ─────────────────────────────────────────────────
+// ── Filename → due-date label (Nubank_YYYY-MM-DD.csv → "DD/mmm/YY") ─────────
+
+const MONTHS_PT = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+
+function extractLabel(filename: string): string {
+  const m = filename.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return filename.replace(/\.csv$/i, "");
+  return `${m[3]}/${MONTHS_PT[parseInt(m[2]) - 1]}/${m[1].slice(2)}`;
+}
+
+// ── Deduplication ─────────────────────────────────────────────────────────────
 
 function fingerprint(date: string, description: string, amount: number): string {
   return `${date}|${description.trim().toLowerCase()}|${Math.abs(amount).toFixed(2)}`;
 }
 
 function buildExistingSet(transactions: Transaction[]): Set<string> {
-  const set = new Set<string>();
-  for (const t of transactions) {
-    set.add(fingerprint(t.transaction_date, t.description, Number(t.amount)));
-  }
-  return set;
+  return new Set(transactions.map((t) =>
+    fingerprint(t.transaction_date, t.description, Number(t.amount)),
+  ));
 }
 
 // ── Category suggestion ───────────────────────────────────────────────────────
@@ -105,28 +108,31 @@ function suggestCategoryId(title: string, categories: Category[]): string | null
   return null;
 }
 
-// ── Import row interface ──────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ImportRow extends RawRow {
-  id: number;
+  id: string;
   selected: boolean;
   categoryId: string | null;
   isPayment: boolean;
   isDuplicate: boolean;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
-interface Props {
-  open: boolean;
-  onClose: () => void;
-  userId: string;
+interface FileTab {
+  id: string;
+  filename: string;
+  label: string;
+  rows: ImportRow[];
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
+interface Props { open: boolean; onClose: () => void; userId: string }
+
 export function ImportCSVDialog({ open, onClose, userId }: Props) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [rows, setRows] = useState<ImportRow[]>([]);
-  const [filename, setFilename] = useState("");
+  const addFileRef = useRef<HTMLInputElement>(null);
+  const [tabs, setTabs] = useState<FileTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const qc = useQueryClient();
 
@@ -141,73 +147,109 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
 
   const expenseCategories = categories.filter((c) => c.type === "expense");
 
-  async function handleFile(file: File) {
-    setFilename(file.name);
+  async function processFiles(files: FileList | File[], existingTabs: FileTab[]) {
+    const fileArr = Array.from(files).filter(
+      (f) => !existingTabs.some((t) => t.filename === f.name),
+    );
+    if (!fileArr.length) return;
     setChecking(true);
-    const text = await file.text();
-    const parsed = parseNubankCSV(text);
-    if (!parsed.length) {
-      toast.error("Nenhuma transação encontrada no arquivo.");
-      setChecking(false);
-      return;
+
+    const newTabs: FileTab[] = [];
+
+    for (const file of fileArr) {
+      const text = await file.text();
+      const parsed = parseNubankCSV(text);
+      if (!parsed.length) {
+        toast.error(`Nenhuma transação em "${file.name}".`);
+        continue;
+      }
+
+      const dates = parsed.map((r) => r.date).sort();
+      const { data: existing = [] } = await supabase
+        .from("transactions")
+        .select("transaction_date, description, amount")
+        .gte("transaction_date", dates[0])
+        .lte("transaction_date", dates[dates.length - 1]);
+
+      const existingSet = buildExistingSet((existing ?? []) as Transaction[]);
+      const tabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      const rows: ImportRow[] = parsed.map((r, i) => {
+        const isPayment = r.amount < 0 || r.title.toLowerCase().includes("pagamento recebido");
+        const isDuplicate = !isPayment && existingSet.has(fingerprint(r.date, r.title, r.amount));
+        return {
+          ...r,
+          id: `${tabId}-${i}`,
+          selected: !isPayment && !isDuplicate,
+          categoryId: isPayment ? null : suggestCategoryId(r.title, categories),
+          isPayment,
+          isDuplicate,
+        };
+      });
+
+      newTabs.push({ id: tabId, filename: file.name, label: extractLabel(file.name), rows });
     }
 
-    // Fetch existing transactions that overlap the CSV date range
-    const dates = parsed.map((r) => r.date).sort();
-    const minDate = dates[0];
-    const maxDate = dates[dates.length - 1];
-    const { data: existing = [] } = await supabase
-      .from("transactions")
-      .select("transaction_date, description, amount")
-      .gte("transaction_date", minDate)
-      .lte("transaction_date", maxDate);
+    if (newTabs.length) {
+      setTabs((prev) => [...prev, ...newTabs]);
+      setActiveTabId((prev) => prev ?? newTabs[0].id);
+      const totalDups = newTabs.reduce((s, t) => s + t.rows.filter((r) => r.isDuplicate).length, 0);
+      if (totalDups > 0) toast.warning(`${totalDups} transação(ões) já importadas foram desmarcadas.`);
+    }
 
-    const existingSet = buildExistingSet((existing ?? []) as Transaction[]);
-
-    const mapped: ImportRow[] = parsed.map((r, i) => {
-      const isPayment = r.amount < 0 || r.title.toLowerCase().includes("pagamento recebido");
-      const isDuplicate = !isPayment && existingSet.has(fingerprint(r.date, r.title, r.amount));
-      return {
-        ...r,
-        id: i,
-        selected: !isPayment && !isDuplicate,
-        categoryId: isPayment ? null : suggestCategoryId(r.title, categories),
-        isPayment,
-        isDuplicate,
-      };
-    });
-
-    setRows(mapped);
     setChecking(false);
-
-    const dupCount = mapped.filter((r) => r.isDuplicate).length;
-    if (dupCount > 0) {
-      toast.warning(`${dupCount} transação(ões) já existem e foram desmarcadas.`);
-    }
   }
 
-  function toggle(id: number) {
-    setRows((prev) => prev.map((r) => r.id === id ? { ...r, selected: !r.selected } : r));
+  function toggle(tabId: string, rowId: string) {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id !== tabId ? t :
+          { ...t, rows: t.rows.map((r) => r.id === rowId ? { ...r, selected: !r.selected } : r) },
+      ),
+    );
   }
 
-  function setCategory(id: number, catId: string) {
-    setRows((prev) => prev.map((r) => r.id === id ? { ...r, categoryId: catId } : r));
+  function setCategory(tabId: string, rowId: string, catId: string) {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id !== tabId ? t :
+          { ...t, rows: t.rows.map((r) => r.id === rowId ? { ...r, categoryId: catId } : r) },
+      ),
+    );
   }
 
-  function toggleAll(val: boolean) {
-    // Only toggle non-payment rows; duplicates follow the val (user can force-import all)
-    setRows((prev) => prev.map((r) => r.isPayment ? r : { ...r, selected: val }));
+  function toggleAll(tabId: string, val: boolean) {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id !== tabId ? t :
+          { ...t, rows: t.rows.map((r) => r.isPayment ? r : { ...r, selected: val }) },
+      ),
+    );
   }
 
-  const importable = rows.filter((r) => !r.isPayment);
-  const selected = rows.filter((r) => r.selected);
-  const dupCount = rows.filter((r) => r.isDuplicate).length;
-  const allSelected = selected.length === importable.length;
+  function removeTab(tabId: string) {
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.id !== tabId);
+      if (activeTabId === tabId) setActiveTabId(next[0]?.id ?? null);
+      return next;
+    });
+  }
+
+  // Aggregated across all tabs
+  const allSelected = tabs.flatMap((t) => t.rows.filter((r) => r.selected));
+  const totalSelected = allSelected.length;
+  const totalAmount = allSelected.reduce((s, r) => s + Math.abs(r.amount), 0);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeImportable = activeTab?.rows.filter((r) => !r.isPayment) ?? [];
+  const activeSelected = activeTab?.rows.filter((r) => r.selected) ?? [];
+  const activeDupCount = activeTab?.rows.filter((r) => r.isDuplicate).length ?? 0;
+  const allSelectedInTab = activeImportable.length > 0 && activeSelected.length === activeImportable.length;
 
   const importMutation = useMutation({
     mutationFn: async () => {
-      if (!selected.length) throw new Error("Nenhuma transação selecionada.");
-      const payload = selected.map((r) => ({
+      if (!allSelected.length) throw new Error("Nenhuma transação selecionada.");
+      const payload = allSelected.map((r) => ({
         type: "expense" as const,
         amount: Math.abs(r.amount),
         description: r.title,
@@ -224,17 +266,15 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
-      toast.success(`${selected.length} transações importadas!`);
-      setRows([]);
-      setFilename("");
-      onClose();
+      toast.success(`${totalSelected} transações importadas!`);
+      handleClose();
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   function handleClose() {
-    setRows([]);
-    setFilename("");
+    setTabs([]);
+    setActiveTabId(null);
     onClose();
   }
 
@@ -254,178 +294,212 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
               <Loader2 className="h-6 w-6 animate-spin" />
               Verificando duplicatas…
             </div>
-          ) : !rows.length ? (
+          ) : tabs.length === 0 ? (
             <label
               className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border bg-muted/20 py-12 cursor-pointer hover:bg-muted/40 transition-colors"
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+              onDrop={(e) => { e.preventDefault(); processFiles(e.dataTransfer.files, tabs); }}
             >
               <Upload className="h-8 w-8 text-muted-foreground" />
               <div className="text-center">
-                <p className="text-sm font-medium">Arraste o CSV do Nubank aqui</p>
+                <p className="text-sm font-medium">Arraste os CSVs do Nubank aqui</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Nubank app → Cartão de crédito → Exportar fatura → CSV
+                  Múltiplos arquivos suportados · Nubank → Exportar fatura → CSV
                 </p>
               </div>
-              <input ref={fileRef} type="file" accept=".csv" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+              <input
+                type="file" accept=".csv" multiple className="hidden"
+                onChange={(e) => { if (e.target.files) processFiles(e.target.files, tabs); }}
+              />
             </label>
           ) : (
             <>
-              {/* File info bar */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                  <FileText className="h-3.5 w-3.5 shrink-0" />
-                  <span>{filename}</span>
-                  <span>·</span>
-                  <span>{rows.length} linhas</span>
-                  <span>·</span>
-                  <span className="text-foreground font-medium">{selected.length} selecionadas</span>
-                  {dupCount > 0 && (
-                    <>
-                      <span>·</span>
-                      <span className="flex items-center gap-1 text-warning font-medium">
-                        <CopyX className="h-3 w-3" />
-                        {dupCount} duplicada(s)
-                      </span>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="ghost" size="sm" className="h-7 text-xs"
-                    onClick={() => toggleAll(!allSelected)}>
-                    {allSelected ? "Desmarcar todas" : "Selecionar todas"}
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7"
-                    onClick={() => { setRows([]); setFilename(""); }}>
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Duplicate notice */}
-              {dupCount > 0 && (
-                <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-xs text-warning-foreground/90">
-                  <CopyX className="h-3.5 w-3.5 shrink-0 mt-0.5 text-warning" />
-                  <span>
-                    <strong>{dupCount}</strong> linha(s) com mesmo nome e valor já existem no sistema e foram desmarcadas.
-                    Marque manualmente se quiser importar mesmo assim.
-                  </span>
-                </div>
-              )}
-
-              {/* Table */}
-              <div className="rounded-xl border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="w-8 px-3 py-2"></th>
-                      <th className="px-3 py-2 text-left text-muted-foreground font-medium">Data</th>
-                      <th className="px-3 py-2 text-left text-muted-foreground font-medium">Descrição</th>
-                      <th className="px-3 py-2 text-left text-muted-foreground font-medium">Categoria</th>
-                      <th className="px-3 py-2 text-right text-muted-foreground font-medium">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {rows.map((row) => (
-                      <tr
-                        key={row.id}
-                        className={`transition-colors ${
-                          row.isPayment
-                            ? "opacity-35 bg-muted/20"
-                            : row.isDuplicate
-                            ? "bg-warning/5"
-                            : row.selected
-                            ? "bg-background hover:bg-muted/30"
-                            : "bg-muted/10 opacity-60"
-                        }`}
+              {/* Tab bar */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {tabs.map((t) => {
+                  const tabSel = t.rows.filter((r) => r.selected).length;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setActiveTabId(t.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        t.id === activeTabId
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
+                      }`}
+                    >
+                      <FileText className="h-3 w-3 shrink-0" />
+                      {t.label}
+                      <span className="opacity-60">({tabSel})</span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); removeTab(t.id); }}
+                        onKeyDown={(e) => e.key === "Enter" && removeTab(t.id)}
+                        className="ml-0.5 opacity-60 hover:opacity-100"
                       >
-                        <td className="px-3 py-2">
-                          {row.isPayment ? (
-                            <span title="Pagamento — ignorado">
-                              <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
-                            </span>
-                          ) : (
-                            <input
-                              type="checkbox"
-                              checked={row.selected}
-                              onChange={() => toggle(row.id)}
-                              className="cursor-pointer accent-primary"
-                            />
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
-                          {row.date}
-                        </td>
-                        <td className="px-3 py-2 max-w-[200px]">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="truncate" title={row.title}>{row.title}</span>
-                            {row.isDuplicate && (
-                              <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-warning/20 text-warning border border-warning/30 whitespace-nowrap">
-                                já importado
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 min-w-[140px]">
-                          {!row.isPayment && row.selected && (
-                            <Select
-                              value={row.categoryId ?? ""}
-                              onValueChange={(v) => setCategory(row.id, v)}
-                            >
-                              <SelectTrigger className="h-7 text-xs border-none bg-muted/40 focus:ring-0">
-                                <SelectValue placeholder="Categoria…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {expenseCategories.map((c) => (
-                                  <SelectItem key={c.id} value={c.id} className="text-xs">
-                                    {c.icon} {c.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums font-medium">
-                          {row.isPayment ? (
-                            <span className="text-income text-[10px]">pagamento</span>
-                          ) : (
-                            <span className={row.isDuplicate ? "text-muted-foreground" : "text-expense"}>
-                              R$ {Math.abs(row.amount).toFixed(2).replace(".", ",")}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        <X className="h-3 w-3" />
+                      </span>
+                    </button>
+                  );
+                })}
+                <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground border border-dashed border-border hover:bg-muted/40 cursor-pointer transition-colors">
+                  <Plus className="h-3 w-3" /> Adicionar
+                  <input
+                    ref={addFileRef}
+                    type="file" accept=".csv" multiple className="hidden"
+                    onChange={(e) => { if (e.target.files) processFiles(e.target.files, tabs); }}
+                  />
+                </label>
               </div>
+
+              {activeTab && (
+                <>
+                  {/* File info bar */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                      <span className="truncate max-w-[200px]" title={activeTab.filename}>{activeTab.filename}</span>
+                      <span>·</span>
+                      <span>{activeTab.rows.length} linhas</span>
+                      <span>·</span>
+                      <span className="text-foreground font-medium">{activeSelected.length} selecionadas</span>
+                      {activeDupCount > 0 && (
+                        <>
+                          <span>·</span>
+                          <span className="flex items-center gap-1 text-warning font-medium">
+                            <CopyX className="h-3 w-3" />{activeDupCount} duplicada(s)
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs shrink-0"
+                      onClick={() => toggleAll(activeTab.id, !allSelectedInTab)}>
+                      {allSelectedInTab ? "Desmarcar todas" : "Selecionar todas"}
+                    </Button>
+                  </div>
+
+                  {/* Duplicate notice */}
+                  {activeDupCount > 0 && (
+                    <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-xs text-warning-foreground/90">
+                      <CopyX className="h-3.5 w-3.5 shrink-0 mt-0.5 text-warning" />
+                      <span>
+                        <strong>{activeDupCount}</strong> linha(s) já existem e foram desmarcadas.
+                        Marque manualmente para importar mesmo assim.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Table */}
+                  <div className="rounded-xl border overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="w-8 px-3 py-2" />
+                          <th className="px-3 py-2 text-left text-muted-foreground font-medium">Data</th>
+                          <th className="px-3 py-2 text-left text-muted-foreground font-medium">Descrição</th>
+                          <th className="px-3 py-2 text-left text-muted-foreground font-medium">Categoria</th>
+                          <th className="px-3 py-2 text-right text-muted-foreground font-medium">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {activeTab.rows.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={`transition-colors ${
+                              row.isPayment
+                                ? "opacity-35 bg-muted/20"
+                                : row.isDuplicate
+                                ? "bg-warning/5"
+                                : row.selected
+                                ? "bg-background hover:bg-muted/30"
+                                : "bg-muted/10 opacity-60"
+                            }`}
+                          >
+                            <td className="px-3 py-2">
+                              {row.isPayment ? (
+                                <span title="Pagamento — ignorado">
+                                  <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                </span>
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  checked={row.selected}
+                                  onChange={() => toggle(activeTab.id, row.id)}
+                                  className="cursor-pointer accent-primary"
+                                />
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{row.date}</td>
+                            <td className="px-3 py-2 max-w-[200px]">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="truncate" title={row.title}>{row.title}</span>
+                                {row.isDuplicate && (
+                                  <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-warning/20 text-warning border border-warning/30 whitespace-nowrap">
+                                    já importado
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 min-w-[140px]">
+                              {!row.isPayment && row.selected && (
+                                <Select
+                                  value={row.categoryId ?? "no-cat"}
+                                  onValueChange={(v) => setCategory(activeTab.id, row.id, v === "no-cat" ? "" : v)}
+                                >
+                                  <SelectTrigger className="h-7 text-xs border-none bg-muted/40 focus:ring-0">
+                                    <SelectValue placeholder="Categoria…" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {expenseCategories.map((c) => (
+                                      <SelectItem key={c.id} value={c.id} className="text-xs">
+                                        {c.icon} {c.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums font-medium">
+                              {row.isPayment ? (
+                                <span className="text-income text-[10px]">pagamento</span>
+                              ) : (
+                                <span className={row.isDuplicate ? "text-muted-foreground" : "text-expense"}>
+                                  R$ {Math.abs(row.amount).toFixed(2).replace(".", ",")}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
 
         {/* Footer */}
-        {rows.length > 0 && !checking && (
+        {tabs.length > 0 && !checking && (
           <div className="px-6 py-4 border-t bg-muted/20 shrink-0 flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              Total selecionado:{" "}
-              <strong className="text-foreground">
-                R$ {selected.reduce((s, r) => s + Math.abs(r.amount), 0).toFixed(2).replace(".", ",")}
-              </strong>
-            </p>
+            <div className="text-xs text-muted-foreground">
+              <span>
+                {tabs.length > 1 ? `${tabs.length} faturas · ` : ""}
+                <strong className="text-foreground">{totalSelected}</strong> transação(ões) ·{" "}
+                R$ <strong className="text-foreground">{totalAmount.toFixed(2).replace(".", ",")}</strong>
+              </span>
+            </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleClose}>
-                Cancelar
-              </Button>
+              <Button variant="outline" size="sm" onClick={handleClose}>Cancelar</Button>
               <Button
                 size="sm"
                 onClick={() => importMutation.mutate()}
-                disabled={!selected.length || importMutation.isPending}
+                disabled={!totalSelected || importMutation.isPending}
               >
                 {importMutation.isPending ? (
                   <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Importando…</>
                 ) : (
-                  `Importar ${selected.length} transação(ões)`
+                  `Importar ${totalSelected} transação(ões)`
                 )}
               </Button>
             </div>
