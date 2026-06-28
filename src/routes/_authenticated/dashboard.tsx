@@ -105,7 +105,9 @@ function Dashboard() {
     const monthTx: Transaction[] = [];
 
     for (const t of transactions) {
-      const d = new Date(t.transaction_date + "T00:00:00");
+      // Use due_date when present (when the money actually moves), else transaction_date
+      const refStr = t.due_date ?? t.transaction_date;
+      const d = new Date(refStr + "T00:00:00");
       const amount = Number(t.amount);
       if (t.type === "income") balance += amount;
       else balance -= amount;
