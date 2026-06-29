@@ -52,7 +52,7 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
 
   const totalInvested = investments.reduce((s, a) => s + Number(a.balance), 0);
   const totalMonthly = investments.reduce((s, a) => s + monthlyReturn(a), 0);
-  const totalAnnual = totalMonthly * 12;
+  const totalAnnual = totalInvested > 0 ? totalInvested * (Math.pow(1 + (totalMonthly / totalInvested), 12) - 1) : 0;
   const blendedRate = totalInvested > 0 ? (totalMonthly / totalInvested) * 100 : 0;
 
   const [withdrawal, setWithdrawal] = useState("");

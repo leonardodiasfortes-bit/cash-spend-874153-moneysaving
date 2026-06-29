@@ -233,7 +233,7 @@ function AccountCard({ account, userId }: { account: Account; userId: string }) 
 
   const isCard = account.type === "credit_card";
   const available =
-    isCard && account.credit_limit != null ? account.credit_limit - account.balance : null;
+    isCard && account.credit_limit != null ? Math.max(0, account.credit_limit - account.balance) : null;
 
   return (
     <div className="rounded-2xl border bg-card p-5 flex flex-col gap-4">
