@@ -11,6 +11,7 @@ import { getMembers, getPersonMap, savePersons } from "@/lib/family";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TransactionList } from "./TransactionList";
+import { PersonSummaryPanel } from "./PersonSummaryPanel";
 import { ImportCSVDialog } from "./ImportCSVDialog";
 import {
   AlertDialog,
@@ -61,6 +62,12 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
   const members = getMembers();
   const personMap = getPersonMap();
   const qc = useQueryClient();
+
+  const allPersonTransactions = useMemo(() => {
+    if (!personFilter) return [];
+    const map = getPersonMap();
+    return transactions.filter((t) => map[t.id] === personFilter);
+  }, [transactions, personFilter]);
 
   const filtered = useMemo(() => {
     let list = transactions;
@@ -310,6 +317,16 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
           = {brl(totalIncome - totalExpense)}
         </span>
       </div>
+
+      {/* Per-person analytics panel */}
+      {personFilter && (
+        <PersonSummaryPanel
+          person={personFilter}
+          transactions={filtered}
+          allTransactions={allPersonTransactions}
+          categories={categories}
+        />
+      )}
 
       {/* Batch action bar */}
       {selectionMode && (

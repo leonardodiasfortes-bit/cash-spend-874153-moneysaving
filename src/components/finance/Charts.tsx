@@ -17,13 +17,14 @@ import { eachDayOfInterval, format } from "date-fns";
 import { brl, type Category, type Transaction, monthRange } from "@/lib/finance";
 
 const CHART_COLORS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-  "var(--chart-6)",
-  "var(--chart-7)",
+  "#22c55e", // green
+  "#3b82f6", // blue
+  "#f59e0b", // amber
+  "#8b5cf6", // violet
+  "#06b6d4", // cyan
+  "#ec4899", // pink
+  "#f97316", // orange
+  "#84cc16", // lime
 ];
 
 export function DailyCashFlow({
@@ -50,7 +51,7 @@ export function DailyCashFlow({
       }
       return { day, income, expense };
     });
-  }, [transactions]);
+  }, [transactions, refDate]);
 
   return (
     <div className="h-72">
@@ -146,6 +147,10 @@ export function ExpenseByCategory({
             verticalAlign="bottom"
             iconType="circle"
             wrapperStyle={{ fontSize: 11 }}
+            formatter={(value) => {
+              const item = data.find((d) => d.name === value);
+              return `${item?.icon ?? ""} ${value}`;
+            }}
           />
         </PieChart>
       </ResponsiveContainer>

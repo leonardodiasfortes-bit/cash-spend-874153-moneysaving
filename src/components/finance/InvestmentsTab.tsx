@@ -65,6 +65,49 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
   const [retDate, setRetDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [retDesc, setRetDesc] = useState("");
 
+  // ── Rendimentos do mês ────────────────────────────────────────────────────
+  const [rendimOpen, setRendimOpen] = useState(false);
+  const [rendimMonth, setRendimMonth] = useState(format(new Date(), "yyyy-MM"));
+  const [rendimAmounts, setRendimAmounts] = useState<Record<string, string>>({});
+
+  function openRendimentos() {
+    const defaults: Record<string, string> = {};
+    for (const acc of investments) defaults[acc.id] = monthlyReturn(acc).toFixed(2);
+    setRendimAmounts(defaults);
+    setRendimMonth(format(new Date(), "yyyy-MM"));
+    setRendimOpen(true);
+  }
+
+  const rendimMutation = useMutation({
+    mutationFn: async () => {
+      const [year, month] = rendimMonth.split("-").map(Number);
+      const date = format(new Date(year, month, 0), "yyyy-MM-dd"); // last day of month
+      const entries = investments
+        .map((acc) => ({ acc, amount: parseFloat(rendimAmounts[acc.id]?.replace(",", ".") ?? "0") }))
+        .filter((e) => e.amount > 0);
+      if (entries.length === 0) throw new Error("Informe ao menos um valor.");
+      const { error } = await supabase.from("transactions").insert(
+        entries.map(({ acc, amount }) => ({
+          type: "income" as const,
+          amount,
+          description: `Rendimento ${rendimMonth} — ${acc.name}`,
+          category_id: investCatId,
+          transaction_date: date,
+          due_date: date,
+          status: "paid" as const,
+          user_id: userId,
+        })),
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      toast.success("Rendimentos lançados com sucesso!");
+      setRendimOpen(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: async () => {
@@ -154,6 +197,50 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Rendimentos do mês dialog */}
+      <Dialog open={rendimOpen} onOpenChange={(v) => !v && setRendimOpen(false)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" /> Lançar rendimentos do mês
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Registra os rendimentos reais como receita. O valor estimado já é preenchido; ajuste se necessário.
+          </p>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Mês de referência</Label>
+              <Input type="month" value={rendimMonth} onChange={(e) => setRendimMonth(e.target.value)} />
+            </div>
+            {investments.map((acc) => (
+              <div key={acc.id} className="space-y-1.5">
+                <Label className="text-xs">
+                  {acc.name}{" "}
+                  <span className="text-muted-foreground font-normal">(est. {brl(monthlyReturn(acc))})</span>
+                </Label>
+                <Input
+                  value={rendimAmounts[acc.id] ?? ""}
+                  onChange={(e) =>
+                    setRendimAmounts((prev) => ({ ...prev, [acc.id]: e.target.value }))
+                  }
+                  placeholder="0,00"
+                  inputMode="decimal"
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setRendimOpen(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" disabled={rendimMutation.isPending} onClick={() => rendimMutation.mutate()}>
+              {rendimMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Lançar receitas"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Retirada dialog */}
       <Dialog open={retiradaOpen} onOpenChange={(v) => !v && setRetiradaOpen(false)}>
         <DialogContent className="sm:max-w-sm">
@@ -233,9 +320,14 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Carteira de investimentos
           </p>
-          <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => openRetirada()}>
-            <ArrowDownToLine className="h-3.5 w-3.5" /> Registrar retirada
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={openRendimentos}>
+              <TrendingUp className="h-3.5 w-3.5" /> Lançar rendimentos
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => openRetirada()}>
+              <ArrowDownToLine className="h-3.5 w-3.5" /> Registrar retirada
+            </Button>
+          </div>
         </div>
         <table className="w-full text-sm">
           <thead>
