@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { format, addMonths } from "date-fns";
+import { format, addMonths, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User, Banknote } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User, Banknote, CalendarClock } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -47,10 +47,22 @@ interface Props {
   userId: string;
 }
 
+type DueFilter = "all" | "today" | "overdue" | "week" | "pending" | "paid";
+
+const DUE_LABELS: Record<DueFilter, string> = {
+  all: "Vencimento: todos",
+  today: "Vence hoje",
+  overdue: "Vencidas",
+  week: "A vencer (7 dias)",
+  pending: "Pendentes",
+  paid: "Pagas",
+};
+
 export function TransactionsTab({ transactions, categories, isLoading, userId }: Props) {
   const [refDate, setRefDate] = useState<Date | null>(null);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
+  const [dueFilter, setDueFilter] = useState<DueFilter>("all");
   const [personFilter, setPersonFilter] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -73,7 +85,12 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
 
   const filtered = useMemo(() => {
     let list = transactions;
-    if (refDate) {
+
+    // Date-relative due filters (hoje / vencidas / a vencer) span all months,
+    // so they ignore the month navigator to stay useful.
+    const dateRelativeDue = dueFilter === "today" || dueFilter === "overdue" || dueFilter === "week";
+
+    if (refDate && !dateRelativeDue) {
       const { start, end } = monthRange(refDate);
       list = list.filter((t) => {
         // Use due_date when present (expenses with vencimento), else transaction_date
@@ -82,6 +99,31 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
         return d >= start && d <= end;
       });
     }
+
+    if (dueFilter !== "all") {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = format(today, "yyyy-MM-dd");
+      const weekStr = format(addDays(today, 7), "yyyy-MM-dd");
+      list = list.filter((t) => {
+        if (t.type !== "expense") return false;
+        switch (dueFilter) {
+          case "today":
+            return t.due_date === todayStr;
+          case "overdue":
+            return !!t.due_date && t.status !== "paid" && t.due_date < todayStr;
+          case "week":
+            return !!t.due_date && t.status !== "paid" && t.due_date >= todayStr && t.due_date <= weekStr;
+          case "pending":
+            return t.status === "pending";
+          case "paid":
+            return t.status === "paid";
+          default:
+            return true;
+        }
+      });
+    }
+
     if (typeFilter !== "all") list = list.filter((t) => t.type === typeFilter);
     if (personFilter) list = list.filter((t) => personMap[t.id] === personFilter);
     if (search.trim()) {
@@ -91,7 +133,7 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
       );
     }
     return list;
-  }, [transactions, refDate, search, typeFilter, personFilter]);
+  }, [transactions, refDate, search, typeFilter, dueFilter, personFilter]);
 
   const monthLabel = refDate
     ? format(refDate, "MMMM 'de' yyyy", { locale: ptBR })
@@ -274,6 +316,23 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
             </button>
           ))}
         </div>
+
+        {/* Vencimento filter */}
+        <Select value={dueFilter} onValueChange={(v) => setDueFilter(v as DueFilter)}>
+          <SelectTrigger
+            className={`h-8 w-auto gap-1.5 text-xs ${dueFilter !== "all" ? "border-primary/50 text-primary" : ""}`}
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(DUE_LABELS) as DueFilter[]).map((k) => (
+              <SelectItem key={k} value={k} className="text-xs">
+                {DUE_LABELS[k]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* Person filter */}
         {members.length > 0 && (
