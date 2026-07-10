@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { eachDayOfInterval, format } from "date-fns";
 
-import { brl, type Category, type Transaction, monthRange } from "@/lib/finance";
+import { brl, netAmount, type Category, type Transaction, monthRange } from "@/lib/finance";
 
 const CHART_COLORS = [
   "#22c55e", // green
@@ -45,8 +45,8 @@ export function DailyCashFlow({
       for (const t of transactions) {
         const refStr = t.due_date ?? t.transaction_date;
         if (refStr === key) {
-          if (t.type === "income") income += Number(t.amount);
-          else expense += Number(t.amount);
+          if (t.type === "income") income += netAmount(t);
+          else expense += netAmount(t);
         }
       }
       return { day, income, expense };
@@ -96,7 +96,7 @@ export function ExpenseByCategory({
     for (const t of transactions) {
       if (t.type !== "expense") continue;
       const key = t.category_id ?? "uncategorized";
-      map.set(key, (map.get(key) ?? 0) + Number(t.amount));
+      map.set(key, (map.get(key) ?? 0) + netAmount(t));
     }
     const catMap = new Map(categories.map((c) => [c.id, c]));
     return Array.from(map.entries())

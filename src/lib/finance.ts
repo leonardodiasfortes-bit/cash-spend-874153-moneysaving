@@ -40,6 +40,7 @@ export interface Transaction {
   user_id: string;
   type: TxType;
   amount: number;
+  discount?: number | null;
   description: string;
   category_id: string | null;
   transaction_date: string;
@@ -50,6 +51,11 @@ export interface Transaction {
   installment_total?: number | null;
   recurrence_group_id?: string | null;
   created_at: string;
+}
+
+/** Effective amount after discount (what actually moves). */
+export function netAmount(tx: Transaction): number {
+  return Number(tx.amount) - Number(tx.discount ?? 0);
 }
 
 export function offsetDate(dateStr: string, type: Exclude<RecurrenceType, "none">, steps: number): string {

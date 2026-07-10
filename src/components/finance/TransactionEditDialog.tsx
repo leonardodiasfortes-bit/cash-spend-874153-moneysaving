@@ -28,14 +28,20 @@ import {
 
 const NOBODY = "__none__";
 
-const schema = z.object({
-  amount: z.coerce.number().positive("Informe um valor maior que zero"),
-  description: z.string().trim().min(1, "Descreva a transação"),
-  category_id: z.string().uuid().nullable(),
-  transaction_date: z.string().min(1),
-  due_date: z.string().nullable(),
-  status: z.enum(["paid", "pending"]).nullable(),
-});
+const schema = z
+  .object({
+    amount: z.coerce.number().positive("Informe um valor maior que zero"),
+    discount: z.coerce.number().min(0, "Desconto não pode ser negativo"),
+    description: z.string().trim().min(1, "Descreva a transação"),
+    category_id: z.string().uuid().nullable(),
+    transaction_date: z.string().min(1),
+    due_date: z.string().nullable(),
+    status: z.enum(["paid", "pending"]).nullable(),
+  })
+  .refine((d) => d.discount <= d.amount, {
+    message: "Desconto não pode ser maior que o valor",
+    path: ["discount"],
+  });
 
 interface Props {
   tx: Transaction;
@@ -46,6 +52,7 @@ interface Props {
 
 export function TransactionEditDialog({ tx, categories, open, onClose }: Props) {
   const [amount, setAmount] = useState(String(tx.amount));
+  const [discount, setDiscount] = useState(String(tx.discount ?? 0));
   const [description, setDescription] = useState(tx.description);
   const [categoryId, setCategoryId] = useState(tx.category_id ?? "");
   const [transactionDate, setTransactionDate] = useState(tx.transaction_date);
@@ -58,6 +65,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
   useEffect(() => {
     if (open) {
       setAmount(String(tx.amount));
+      setDiscount(String(tx.discount ?? 0));
       setDescription(tx.description);
       setCategoryId(tx.category_id ?? "");
       setTransactionDate(tx.transaction_date);
@@ -74,6 +82,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
     mutationFn: async () => {
       const parsed = schema.safeParse({
         amount,
+        discount: discount || 0,
         description,
         category_id: categoryId || null,
         transaction_date: transactionDate,
@@ -133,6 +142,24 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
                 required
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Desconto (R$)</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={discount}
+              onChange={(e) => setDiscount(e.target.value)}
+              placeholder="0,00"
+            />
+            {Number(discount) > 0 && Number(amount) > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Valor líquido: {(Number(amount) - Number(discount)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

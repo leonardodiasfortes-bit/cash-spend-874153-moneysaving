@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { TrendingUp, TrendingDown, Scale, ChevronLeft, ChevronRight } from "lucide-react";
 
-import { brl, type Account, type Category, type Transaction } from "@/lib/finance";
+import { brl, netAmount, type Account, type Category, type Transaction } from "@/lib/finance";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +45,7 @@ function CashFlowView({ transactions }: { transactions: Transaction[] }) {
       const refStr = t.due_date ?? t.transaction_date;
       const d = new Date(refStr + "T00:00:00");
       if (d.getFullYear() < year) {
-        running += t.type === "income" ? Number(t.amount) : -Number(t.amount);
+        running += t.type === "income" ? netAmount(t) : -netAmount(t);
       }
     }
 
@@ -59,10 +59,10 @@ function CashFlowView({ transactions }: { transactions: Transaction[] }) {
 
       const income = monthTx
         .filter((t) => t.type === "income")
-        .reduce((s, t) => s + Number(t.amount), 0);
+        .reduce((s, t) => s + netAmount(t), 0);
       const expense = monthTx
         .filter((t) => t.type === "expense")
-        .reduce((s, t) => s + Number(t.amount), 0);
+        .reduce((s, t) => s + netAmount(t), 0);
       const net = income - expense;
       const openingBalance = running;
       running += net;
@@ -254,9 +254,9 @@ function DREView({ transactions, categories }: { transactions: Transaction[]; ca
       const cat = t.category_id ? catMap.get(t.category_id) : null;
       const key = cat?.name ?? "Sem categoria";
       if (t.type === "income") {
-        incomeMap.set(key, (incomeMap.get(key) ?? 0) + Number(t.amount));
+        incomeMap.set(key, (incomeMap.get(key) ?? 0) + netAmount(t));
       } else {
-        expenseMap.set(key, (expenseMap.get(key) ?? 0) + Number(t.amount));
+        expenseMap.set(key, (expenseMap.get(key) ?? 0) + netAmount(t));
       }
     }
 
@@ -420,7 +420,7 @@ function BalanceView({
     const totalCartoes = sumAccounts(creditCards);
     const contasPendentes = transactions
       .filter((t) => t.type === "expense" && t.status === "pending")
-      .reduce((s, t) => s + Number(t.amount), 0);
+      .reduce((s, t) => s + netAmount(t), 0);
     const totalPassivo = totalCartoes + contasPendentes;
 
     return {

@@ -3,7 +3,7 @@ import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Bot, Send, Key, Loader2, User, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 
-import { brl, type Account, type Category, type Transaction } from "@/lib/finance";
+import { brl, netAmount, type Account, type Category, type Transaction } from "@/lib/finance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,15 +52,15 @@ function buildContext(
 
     const income = monthTx
       .filter((t) => t.type === "income")
-      .reduce((s, t) => s + Number(t.amount), 0);
+      .reduce((s, t) => s + netAmount(t), 0);
     const expense = monthTx
       .filter((t) => t.type === "expense")
-      .reduce((s, t) => s + Number(t.amount), 0);
+      .reduce((s, t) => s + netAmount(t), 0);
 
     const byCategory: Record<string, number> = {};
     for (const t of monthTx.filter((x) => x.type === "expense")) {
       const cat = t.category_id ? (catMap.get(t.category_id) ?? "Sem categoria") : "Sem categoria";
-      byCategory[cat] = (byCategory[cat] ?? 0) + Number(t.amount);
+      byCategory[cat] = (byCategory[cat] ?? 0) + netAmount(t);
     }
 
     const topCats = Object.entries(byCategory)

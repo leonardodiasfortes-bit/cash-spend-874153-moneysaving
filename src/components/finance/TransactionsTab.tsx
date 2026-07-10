@@ -1,17 +1,18 @@
 import { useMemo, useState } from "react";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User, Banknote } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { monthRange, brl, type Category, type Transaction } from "@/lib/finance";
+import { monthRange, brl, netAmount, type Category, type Transaction } from "@/lib/finance";
 import { getMembers, getPersonMap, savePersons } from "@/lib/family";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TransactionList } from "./TransactionList";
 import { PersonSummaryPanel } from "./PersonSummaryPanel";
+import { BulkEditValuesDialog } from "./BulkEditValuesDialog";
 import { ImportCSVDialog } from "./ImportCSVDialog";
 import {
   AlertDialog,
@@ -59,6 +60,7 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
   const NOBODY = "__none__";
   const [bulkPersonOpen, setBulkPersonOpen] = useState(false);
   const [bulkPerson, setBulkPerson] = useState(NOBODY);
+  const [bulkValuesOpen, setBulkValuesOpen] = useState(false);
   const members = getMembers();
   const personMap = getPersonMap();
   const qc = useQueryClient();
@@ -85,7 +87,7 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
-        (t) => t.description.toLowerCase().includes(q) || brl(Number(t.amount)).includes(q),
+        (t) => t.description.toLowerCase().includes(q) || brl(netAmount(t)).includes(q),
       );
     }
     return list;
@@ -95,8 +97,8 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
     ? format(refDate, "MMMM 'de' yyyy", { locale: ptBR })
     : "Todos os meses";
 
-  const totalIncome = filtered.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
-  const totalExpense = filtered.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+  const totalIncome = filtered.filter((t) => t.type === "income").reduce((s, t) => s + netAmount(t), 0);
+  const totalExpense = filtered.filter((t) => t.type === "expense").reduce((s, t) => s + netAmount(t), 0);
 
   // ── Selection helpers ────────────────────────────────────────────────────────
 
@@ -164,6 +166,7 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
   });
 
   const selectedArr = Array.from(selectedIds);
+  const selectedTxs = filtered.filter((t) => selectedIds.has(t.id));
   const allSelected = filtered.length > 0 && selectedIds.size === filtered.length;
 
   return (
@@ -232,6 +235,14 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Bulk values dialog */}
+      <BulkEditValuesDialog
+        open={bulkValuesOpen}
+        transactions={selectedTxs}
+        onClose={() => setBulkValuesOpen(false)}
+        onDone={exitSelectionMode}
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -350,6 +361,10 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
                 <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs"
                   onClick={() => { setBulkCatId(""); setBulkCatOpen(true); }}>
                   <Tag className="h-3.5 w-3.5" /> Alterar categoria
+                </Button>
+                <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs"
+                  onClick={() => setBulkValuesOpen(true)}>
+                  <Banknote className="h-3.5 w-3.5" /> Editar valores
                 </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>

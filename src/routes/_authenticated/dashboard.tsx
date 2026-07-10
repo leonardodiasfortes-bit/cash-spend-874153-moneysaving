@@ -28,6 +28,7 @@ import {
   brl,
   dueAlert,
   monthRange,
+  netAmount,
   type Account,
   type Category,
   type Transaction,
@@ -108,7 +109,7 @@ function Dashboard() {
       // Use due_date when present (when the money actually moves), else transaction_date
       const refStr = t.due_date ?? t.transaction_date;
       const d = new Date(refStr + "T00:00:00");
-      const amount = Number(t.amount);
+      const amount = netAmount(t);
       if (t.type === "income") balance += amount;
       else balance -= amount;
       if (d >= start && d <= end) {

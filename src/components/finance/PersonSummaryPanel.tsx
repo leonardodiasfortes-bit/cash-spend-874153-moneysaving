@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { AlertTriangle, Clock } from "lucide-react";
 
-import { brl, dueAlert, fmtDate, type Category, type Transaction } from "@/lib/finance";
+import { brl, dueAlert, fmtDate, netAmount, type Category, type Transaction } from "@/lib/finance";
 import { cn } from "@/lib/utils";
 
 const CAT_COLORS = [
@@ -20,11 +20,11 @@ export function PersonSummaryPanel({ person, transactions, allTransactions, cate
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
   const income = useMemo(
-    () => transactions.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0),
+    () => transactions.filter((t) => t.type === "income").reduce((s, t) => s + netAmount(t), 0),
     [transactions],
   );
   const expense = useMemo(
-    () => transactions.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0),
+    () => transactions.filter((t) => t.type === "expense").reduce((s, t) => s + netAmount(t), 0),
     [transactions],
   );
 
@@ -34,8 +34,8 @@ export function PersonSummaryPanel({ person, transactions, allTransactions, cate
       const cat = t.category_id ? catMap.get(t.category_id) : null;
       const key = cat?.name ?? "Sem categoria";
       const existing = map.get(key);
-      if (existing) existing.value += Number(t.amount);
-      else map.set(key, { name: key, icon: cat?.icon ?? "❓", value: Number(t.amount) });
+      if (existing) existing.value += netAmount(t);
+      else map.set(key, { name: key, icon: cat?.icon ?? "❓", value: netAmount(t) });
     }
     return Array.from(map.values()).sort((a, b) => b.value - a.value);
   }, [transactions, catMap]);

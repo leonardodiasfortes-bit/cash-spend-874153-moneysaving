@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { brl, dueAlert, fmtDate, type Category, type Transaction } from "@/lib/finance";
+import { brl, dueAlert, fmtDate, netAmount, type Category, type Transaction } from "@/lib/finance";
 import { getPersonMap } from "@/lib/family";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +71,8 @@ export function TransactionList({ transactions, categories, selectedIds, onToggl
         const alert = dueAlert(tx);
         const isIncome = tx.type === "income";
         const person = personMap[tx.id];
+        const discount = Number(tx.discount ?? 0);
+        const net = netAmount(tx);
 
         return (
           <li
@@ -138,14 +140,22 @@ export function TransactionList({ transactions, categories, selectedIds, onToggl
             </div>
 
             <div className="text-right">
+              {discount > 0 && (
+                <p className="text-[10px] text-muted-foreground line-through tabular-nums">
+                  {brl(Number(tx.amount))}
+                </p>
+              )}
               <p
                 className={cn(
                   "font-semibold tabular-nums text-sm",
                   isIncome ? "text-income" : "text-expense",
                 )}
               >
-                {isIncome ? "+" : "−"} {brl(Number(tx.amount))}
+                {isIncome ? "+" : "−"} {brl(net)}
               </p>
+              {discount > 0 && (
+                <p className="text-[10px] text-income">−{brl(discount)} desc.</p>
+              )}
             </div>
 
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
