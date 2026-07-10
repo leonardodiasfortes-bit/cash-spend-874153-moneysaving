@@ -41,6 +41,7 @@ import { AccountsTab } from "@/components/finance/AccountsTab";
 import { ReportsTab } from "@/components/finance/ReportsTab";
 import { TransactionsTab } from "@/components/finance/TransactionsTab";
 import { InvestmentsTab } from "@/components/finance/InvestmentsTab";
+import { MonthAllocationCard } from "@/components/finance/MonthAllocationCard";
 import { CategoriesTab } from "@/components/finance/CategoriesTab";
 import { AIAnalysisTab } from "@/components/finance/AIAnalysisTab";
 import { SettingsTab } from "@/components/finance/SettingsTab";
@@ -260,6 +261,14 @@ function Dashboard() {
                 </div>
               )}
             </section>
+
+            {/* Direcionar saldo do mês para rendimento */}
+            <MonthAllocationCard
+              month={format(selectedMonth, "yyyy-MM")}
+              monthLabel={monthLabel}
+              surplus={stats.income - stats.expense}
+              investments={accounts.filter((a) => a.type === "investment")}
+            />
 
             {/* Charts */}
             <section className="grid grid-cols-1 lg:grid-cols-5 gap-4">
