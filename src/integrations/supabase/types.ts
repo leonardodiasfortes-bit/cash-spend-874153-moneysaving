@@ -86,7 +86,6 @@ export type Database = {
           category_id: string | null
           created_at: string
           description: string
-          discount: number
           due_date: string | null
           id: string
           status: Database["public"]["Enums"]["expense_status"] | null
@@ -100,7 +99,6 @@ export type Database = {
           category_id?: string | null
           created_at?: string
           description: string
-          discount?: number
           due_date?: string | null
           id?: string
           status?: Database["public"]["Enums"]["expense_status"] | null
@@ -114,7 +112,6 @@ export type Database = {
           category_id?: string | null
           created_at?: string
           description?: string
-          discount?: number
           due_date?: string | null
           id?: string
           status?: Database["public"]["Enums"]["expense_status"] | null

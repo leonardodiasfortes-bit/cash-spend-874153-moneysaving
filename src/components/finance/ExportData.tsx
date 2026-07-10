@@ -4,7 +4,7 @@ import { Download, FileJson, FileText, Shield, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
 import { supabase } from "@/integrations/supabase/client";
-import { brl, netAmount, type Account, type Category, type Transaction } from "@/lib/finance";
+import { brl, type Account, type Category, type Transaction } from "@/lib/finance";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -102,8 +102,6 @@ export function ExportData({ userId }: Props) {
       descricao: t.description,
       categoria: t.category_id ? (catMap.get(t.category_id) ?? "") : "",
       valor: Number(t.amount).toFixed(2).replace(".", ","),
-      desconto: Number(t.discount ?? 0).toFixed(2).replace(".", ","),
-      valor_liquido: netAmount(t).toFixed(2).replace(".", ","),
       status: t.status ?? "",
     }));
     downloadFile(toCSV(rows), `transacoes-${stamp}.csv`, "text/csv;charset=utf-8;");

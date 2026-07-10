@@ -34,7 +34,6 @@ const schema = z
   .object({
     type: z.enum(["income", "expense"]),
     amount: z.coerce.number().positive("Informe um valor maior que zero"),
-    discount: z.coerce.number().min(0, "Desconto não pode ser negativo").default(0),
     description: z.string().trim().min(1, "Descreva a transação").max(200),
     category_id: z.string().uuid().nullable(),
     transaction_date: z.string().min(1),
@@ -44,10 +43,6 @@ const schema = z
   .refine((d) => d.type === "income" || d.status, {
     message: "Selecione o status da despesa",
     path: ["status"],
-  })
-  .refine((d) => d.discount <= d.amount, {
-    message: "Desconto não pode ser maior que o valor",
-    path: ["discount"],
   });
 
 const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
@@ -61,7 +56,6 @@ export function TransactionForm({ userId }: { userId: string }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"income" | "expense">("expense");
   const [amount, setAmount] = useState("");
-  const [discount, setDiscount] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [transactionDate, setTransactionDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -95,7 +89,6 @@ export function TransactionForm({ userId }: { userId: string }) {
       const parsed = schema.safeParse({
         type,
         amount,
-        discount: discount || 0,
         description,
         category_id: categoryId || null,
         transaction_date: transactionDate,
@@ -169,7 +162,6 @@ export function TransactionForm({ userId }: { userId: string }) {
 
   function resetForm() {
     setAmount("");
-    setDiscount("");
     setDescription("");
     setCategoryId("");
     setDueDate("");
@@ -249,24 +241,6 @@ export function TransactionForm({ userId }: { userId: string }) {
                 required
               />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Desconto (R$)</Label>
-            <Input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              value={discount}
-              onChange={(e) => setDiscount(e.target.value)}
-              placeholder="0,00"
-            />
-            {!!discount && Number(discount) > 0 && Number(amount) > 0 && (
-              <p className="text-[11px] text-muted-foreground">
-                Valor líquido: {(Number(amount) - Number(discount)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-              </p>
-            )}
           </div>
 
           <div className="space-y-2">

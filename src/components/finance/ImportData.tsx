@@ -130,7 +130,6 @@ export function ImportData({ userId }: Props) {
         const chunk = backup.transactions.slice(i, i + BATCH).map((t) => ({
           type: t.type,
           amount: t.amount,
-          discount: t.discount ?? 0,
           description: t.description,
           category_id: t.category_id ? (catIdMap.get(t.category_id) ?? null) : null,
           transaction_date: t.transaction_date,
