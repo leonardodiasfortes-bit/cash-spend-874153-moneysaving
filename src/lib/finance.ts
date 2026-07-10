@@ -87,6 +87,17 @@ export function dueAlert(tx: Transaction): "overdue" | "soon" | null {
   return null;
 }
 
+/** Row highlight: "paid" (green) once settled, "danger" (red) when due within 5 days or overdue. */
+export function rowTone(tx: Transaction): "paid" | "danger" | null {
+  if (tx.type !== "expense") return null;
+  if (tx.status === "paid") return "paid";
+  if (!tx.due_date) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(tx.due_date + "T00:00:00");
+  return isBefore(due, addDays(today, 6)) ? "danger" : null;
+}
+
 export function isAfterDate(a: Date, b: Date) {
   return isAfter(a, b);
 }

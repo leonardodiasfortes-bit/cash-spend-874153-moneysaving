@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { brl, dueAlert, fmtDate, netAmount, type Category, type Transaction } from "@/lib/finance";
+import { brl, dueAlert, fmtDate, netAmount, rowTone, type Category, type Transaction } from "@/lib/finance";
 import { getPersonMap } from "@/lib/family";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -73,13 +73,23 @@ export function TransactionList({ transactions, categories, selectedIds, onToggl
         const person = personMap[tx.id];
         const discount = Number(tx.discount ?? 0);
         const net = netAmount(tx);
+        const selected = selectionMode && selectedIds?.has(tx.id);
+        const tone = rowTone(tx);
+        const highlight = selected
+          ? "bg-primary/5"
+          : tone === "paid"
+          ? "bg-income/10"
+          : tone === "danger"
+          ? "bg-expense/10"
+          : "";
 
         return (
           <li
             key={tx.id}
             className={cn(
               "flex items-center gap-3 py-3 group transition-colors",
-              selectionMode && selectedIds?.has(tx.id) && "bg-primary/5 rounded-xl px-2",
+              highlight && "rounded-xl px-2",
+              highlight,
             )}
           >
             {selectionMode && (
