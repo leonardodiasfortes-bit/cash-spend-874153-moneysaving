@@ -33,16 +33,28 @@
 
 Antes de qualquer um dos recursos, isto precisa existir:
 
-### 1. Provedor de WhatsApp (decisão pendente)
+### 1. Provedor de WhatsApp — ✅ DECIDIDO: Cloud API oficial (Meta) — 2026-07-10
 
 | Opção | Prós | Contras |
 |---|---|---|
-| **Cloud API oficial (Meta)** | Grátis ~1.000 conversas/mês, sem risco de ban, sustentável | Setup burocrático; **alerta proativo exige template aprovado** pela Meta |
-| **Evolution API** (auto-hospedada) | Grátis, conecta no seu número em minutos, sem template | Não-oficial (WhatsApp Web), **risco de banimento**; precisa de um VPS (~US$5/mês) |
-| **Z-API / Twilio** | Setup simples, sem ban | Pago (mensal ou por mensagem) |
+| **Cloud API oficial (Meta)** ✅ | Grátis ~1.000 conversas/mês, sem risco de ban, sustentável | Setup burocrático; **alerta proativo exige template aprovado** pela Meta |
+| Evolution API (auto-hospedada) | Grátis, conecta no seu número em minutos, sem template | Não-oficial (WhatsApp Web), **risco de banimento**; precisa de um VPS (~US$5/mês) |
+| Z-API / Twilio | Setup simples, sem ban | Pago (mensal ou por mensagem) |
 
-**Recomendação**: começar pela **Cloud API oficial** para algo duradouro, ou
-**Evolution** se quiser validar rápido antes de investir no setup oficial.
+#### Checklist de setup na Meta (parte do usuário — eu não consigo fazer)
+
+1. Criar/entrar numa **conta Meta Business** (business.facebook.com).
+2. Em **developers.facebook.com** → criar um App → adicionar o produto **WhatsApp**.
+3. Pegar um **número de teste** (grátis) ou registrar o seu número.
+4. Anotar: **Phone Number ID**, **WhatsApp Business Account ID** e gerar um
+   **token** (temporário para testar; depois um token permanente de sistema).
+5. Definir um **verify token** qualquer (string à sua escolha) para o webhook.
+6. Anotar o **App Secret** (para validar a assinatura do webhook).
+7. (Para os alertas) cadastrar o **template** de mensagem e aguardar aprovação.
+
+Esses valores viram **secrets no Supabase** (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`,
+`WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`). A partir daí, a implementação do
+código é comigo.
 
 ### 2. Secrets no Supabase (Edge Functions → Secrets)
 
