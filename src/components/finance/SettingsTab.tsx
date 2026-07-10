@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ExportData } from "./ExportData";
 import { ImportData } from "./ImportData";
+import { WhatsAppSettings } from "./WhatsAppSettings";
 import { Shield, Database, CheckCircle2, Copy, Check } from "lucide-react";
 
 interface Props {
@@ -196,6 +197,9 @@ export function SettingsTab({ userId }: Props) {
 
   return (
     <div className="space-y-6 max-w-3xl">
+      {/* WhatsApp integration (Fase 0 — cadastro de números) */}
+      <WhatsAppSettings userId={userId} />
+
       {/* Export */}
       <ExportData userId={userId} />
 
