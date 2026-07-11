@@ -20,12 +20,6 @@ interface WaContact {
   alerts_enabled: boolean;
 }
 
-// The generated Supabase types don't include wa_contacts (table lives only in
-// the user's own DB after they run the SQL below), so we access it untyped.
-const sb = supabase as unknown as {
-  from: (t: string) => any;
-};
-
 const WA_SQL = `create table if not exists public.wa_contacts (
   id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null references auth.users(id) on delete cascade,
@@ -76,7 +70,7 @@ export function WhatsAppSettings({ userId }: Props) {
   const { data: contacts = [], error, isLoading } = useQuery<WaContact[]>({
     queryKey: ["wa_contacts"],
     queryFn: async () => {
-      const { data, error } = await sb.from("wa_contacts").select("*").order("created_at");
+      const { data, error } = await supabase.from("wa_contacts").select("*").order("created_at");
       if (error) throw error;
       return data as WaContact[];
     },
@@ -91,7 +85,7 @@ export function WhatsAppSettings({ userId }: Props) {
       if (digits.length < 12 || digits.length > 13) {
         throw new Error("Número inválido. Use DDI+DDD+número, ex: 5511999998888.");
       }
-      const { error } = await sb
+      const { error } = await supabase
         .from("wa_contacts")
         .insert({ user_id: userId, phone: digits, label: label.trim() || null });
       if (error) {
@@ -111,7 +105,7 @@ export function WhatsAppSettings({ userId }: Props) {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await sb.from("wa_contacts").delete().eq("id", id);
+      const { error } = await supabase.from("wa_contacts").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

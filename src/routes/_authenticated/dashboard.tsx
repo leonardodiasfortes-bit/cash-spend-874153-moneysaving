@@ -151,7 +151,7 @@ function Dashboard() {
         </div>
 
         {/* Tab nav */}
-        <div className="max-w-6xl mx-auto px-4 flex gap-1 -mb-px">
+        <div className="max-w-6xl mx-auto px-4 flex gap-1 -mb-px overflow-x-auto scrollbar-none">
           <TabButton
             active={tab === "overview"}
             onClick={() => setTab("overview")}
@@ -358,7 +358,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+      className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors shrink-0 whitespace-nowrap ${
         active
           ? "border-primary text-primary"
           : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"

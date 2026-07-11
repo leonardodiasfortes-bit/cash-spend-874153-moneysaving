@@ -172,7 +172,8 @@ function CashFlowView({ transactions }: { transactions: Transaction[] }) {
 
       {/* Monthly table */}
       <div className="rounded-2xl border bg-card overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead>
             <tr className="border-b bg-muted/30">
               <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Mês</th>
@@ -223,6 +224,7 @@ function CashFlowView({ transactions }: { transactions: Transaction[] }) {
             </tr>
           </tfoot>
         </table>
+        </div>
       </div>
     </div>
   );

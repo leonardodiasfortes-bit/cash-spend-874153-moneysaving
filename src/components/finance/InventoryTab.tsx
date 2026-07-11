@@ -16,10 +16,17 @@ import {
 
 import { supabase } from "@/integrations/supabase/client";
 import { brl } from "@/lib/finance";
+import { getMembers, getPersonMap, savePerson } from "@/lib/family";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -39,9 +46,9 @@ interface InvItem {
   purchased: boolean;
 }
 
-// inventory isn't in the generated Supabase types (table lives only in the
-// user's DB after they run the SQL), so we access it untyped.
-const sb = supabase as unknown as { from: (t: string) => any };
+// "Uso" sentinels — the rest of the values are member names (Léo, Paola…).
+const SHARED = "__shared__";
+const INDIVIDUAL = "__individual__";
 
 const INVENTORY_SQL = `create table if not exists public.inventory (
   id              uuid primary key default gen_random_uuid(),
@@ -76,18 +83,24 @@ export function InventoryTab({ userId }: Props) {
   const [view, setView] = useState<Kind>("owned");
   const [sqlOpen, setSqlOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [tick, setTick] = useState(0); // forces re-read of the localStorage person map
 
   // add form
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [value, setValue] = useState("");
-  const [shared, setShared] = useState(false);
+  const [usage, setUsage] = useState<string>(SHARED);
+
+  const members = getMembers();
 
   const { data: all = [], error, isLoading } = useQuery<InvItem[]>({
     queryKey: ["inventory"],
     queryFn: async () => {
-      const { data, error } = await sb.from("inventory").select("*").order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("inventory")
+        .select("*")
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data as InvItem[];
     },
@@ -96,6 +109,7 @@ export function InventoryTab({ userId }: Props) {
 
   const tableMissing = !!error && isMissingTable(error);
   const items = useMemo(() => all.filter((i) => i.kind === view), [all, view]);
+  const personMap = useMemo(() => getPersonMap(), [tick, all]);
 
   const totals = useMemo(() => {
     const relevant = view === "planned" ? items.filter((i) => !i.purchased) : items;
@@ -111,7 +125,13 @@ export function InventoryTab({ userId }: Props) {
     setCategory("");
     setQuantity("1");
     setValue("");
-    setShared(false);
+    setUsage(SHARED);
+  }
+
+  function usageOf(item: InvItem): string {
+    if (item.shared) return SHARED;
+    const p = personMap[item.id];
+    return p && members.includes(p) ? p : INDIVIDUAL;
   }
 
   const add = useMutation({
@@ -120,31 +140,39 @@ export function InventoryTab({ userId }: Props) {
       if (!nm) throw new Error("Informe o nome.");
       const q = parseInt(quantity) || 1;
       const val = parseFloat((value || "0").replace(",", ".")) || 0;
-      const { error } = await sb.from("inventory").insert({
-        user_id: userId,
-        kind: view,
-        name: nm,
-        category: view === "owned" ? category.trim() || null : null,
-        quantity: q,
-        estimated_value: val,
-        shared,
-      });
+      const isShared = usage === SHARED;
+      const { data, error } = await supabase
+        .from("inventory")
+        .insert({
+          user_id: userId,
+          kind: view,
+          name: nm,
+          category: view === "owned" ? category.trim() || null : null,
+          quantity: q,
+          estimated_value: val,
+          shared: isShared,
+        })
+        .select("id")
+        .single();
       if (error) {
         if (isMissingTable(error)) throw new Error("Rode o SQL do inventário no Supabase primeiro.");
         throw error;
       }
+      const person = isShared || usage === INDIVIDUAL ? null : usage;
+      if (person && data?.id) savePerson(data.id, person);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["inventory"] });
       resetForm();
+      setTick((t) => t + 1);
       toast.success(view === "owned" ? "Item adicionado." : "Compra planejada adicionada.");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const patch = useMutation({
-    mutationFn: async ({ id, changes }: { id: string; changes: Partial<InvItem> }) => {
-      const { error } = await sb.from("inventory").update(changes).eq("id", id);
+    mutationFn: async ({ id, changes }: { id: string; changes: { shared?: boolean; purchased?: boolean } }) => {
+      const { error } = await supabase.from("inventory").update(changes).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory"] }),
@@ -153,7 +181,7 @@ export function InventoryTab({ userId }: Props) {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await sb.from("inventory").delete().eq("id", id);
+      const { error } = await supabase.from("inventory").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -163,6 +191,14 @@ export function InventoryTab({ userId }: Props) {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  function setUsageFor(item: InvItem, val: string) {
+    const nextShared = val === SHARED;
+    if (nextShared !== item.shared) patch.mutate({ id: item.id, changes: { shared: nextShared } });
+    const person = val === SHARED || val === INDIVIDUAL ? null : val;
+    savePerson(item.id, person);
+    setTick((t) => t + 1);
+  }
+
   function copySql() {
     navigator.clipboard.writeText(INVENTORY_SQL).then(() => {
       setCopied(true);
@@ -170,7 +206,7 @@ export function InventoryTab({ userId }: Props) {
     });
   }
 
-  // ── Setup gate ────────────────────────────────────────────────────────────
+  // ── Setup gate (só aparece se a tabela ainda não existir) ──────────────────
   if (tableMissing) {
     return (
       <div className="rounded-2xl border bg-card overflow-hidden max-w-3xl">
@@ -208,14 +244,24 @@ export function InventoryTab({ userId }: Props) {
 
   const isOwned = view === "owned";
 
+  const usageOptions = (
+    <>
+      <SelectItem value={SHARED} className="text-xs">Compartilhado</SelectItem>
+      <SelectItem value={INDIVIDUAL} className="text-xs">Individual</SelectItem>
+      {members.map((m) => (
+        <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>
+      ))}
+    </>
+  );
+
   return (
     <div className="space-y-4">
       {/* Sub-tabs */}
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b overflow-x-auto scrollbar-none">
         <button
           onClick={() => setView("owned")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
+            "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors shrink-0",
             isOwned ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
@@ -224,7 +270,7 @@ export function InventoryTab({ userId }: Props) {
         <button
           onClick={() => setView("planned")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
+            "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors shrink-0",
             !isOwned ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
@@ -233,7 +279,7 @@ export function InventoryTab({ userId }: Props) {
       </div>
 
       {/* Summary */}
-      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground px-1">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground px-1">
         <span><strong className="text-foreground">{totals.count}</strong> {isOwned ? "item(ns)" : "a comprar"}</span>
         <span>{isOwned ? "Valor estimado" : "Total a comprar"}: <strong className="text-foreground">{brl(totals.total)}</strong></span>
         <span className="flex items-center gap-1"><Users className="h-3 w-3" /> Compartilhado: {brl(totals.sharedVal)}</span>
@@ -241,33 +287,39 @@ export function InventoryTab({ userId }: Props) {
       </div>
 
       {/* Add form */}
-      <div className="flex flex-wrap items-end gap-2 rounded-2xl border bg-card p-4">
-        <div className="space-y-1.5 flex-1 min-w-[160px]">
+      <div className="flex flex-col gap-2 rounded-2xl border bg-card p-4 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="space-y-1.5 w-full sm:flex-1 sm:min-w-[140px]">
           <Label className="text-xs">{isOwned ? "Item" : "Produto"}</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)}
             placeholder={isOwned ? "Ex: Furadeira" : "Ex: Aspirador"} className="h-9" />
         </div>
         {isOwned && (
-          <div className="space-y-1.5 w-32">
+          <div className="space-y-1.5 w-full sm:w-32">
             <Label className="text-xs">Categoria</Label>
             <Input value={category} onChange={(e) => setCategory(e.target.value)}
               placeholder="Ex: Ferramentas" className="h-9" />
           </div>
         )}
-        <div className="space-y-1.5 w-20">
-          <Label className="text-xs">Qtd.</Label>
-          <Input type="number" min={0} value={quantity} onChange={(e) => setQuantity(e.target.value)} className="h-9" />
+        <div className="flex gap-2">
+          <div className="space-y-1.5 w-20">
+            <Label className="text-xs">Qtd.</Label>
+            <Input type="number" min={0} value={quantity} onChange={(e) => setQuantity(e.target.value)} className="h-9" />
+          </div>
+          <div className="space-y-1.5 flex-1 sm:w-28">
+            <Label className="text-xs">Valor est. (R$)</Label>
+            <Input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal"
+              placeholder="0,00" className="h-9" />
+          </div>
         </div>
-        <div className="space-y-1.5 w-28">
-          <Label className="text-xs">Valor est. (R$)</Label>
-          <Input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal"
-            placeholder="0,00" className="h-9" />
+        <div className="space-y-1.5 w-full sm:w-44">
+          <Label className="text-xs">Uso</Label>
+          <Select value={usage} onValueChange={setUsage}>
+            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>{usageOptions}</SelectContent>
+          </Select>
         </div>
-        <div className="flex items-center gap-2 h-9 px-1">
-          <Switch id="shared-new" checked={shared} onCheckedChange={setShared} />
-          <Label htmlFor="shared-new" className="text-xs cursor-pointer">Compartilhado</Label>
-        </div>
-        <Button size="sm" className="h-9 gap-1.5" disabled={add.isPending || !name.trim()} onClick={() => add.mutate()}>
+        <Button size="sm" className="h-9 w-full sm:w-auto gap-1.5"
+          disabled={add.isPending || !name.trim()} onClick={() => add.mutate()}>
           {add.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Adicionar
         </Button>
@@ -289,7 +341,7 @@ export function InventoryTab({ userId }: Props) {
                 <li
                   key={it.id}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 group",
+                    "flex flex-wrap items-center gap-2 px-2 py-2.5 sm:px-3",
                     it.purchased && "opacity-60",
                   )}
                 >
@@ -302,31 +354,24 @@ export function InventoryTab({ userId }: Props) {
                     {isOwned ? <Package className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
                   </div>
 
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-[120px]">
                     <p className={cn("text-sm font-medium truncate", it.purchased && "line-through")}>
                       {it.name}
                       {it.quantity > 1 && <span className="text-muted-foreground font-normal"> ×{it.quantity}</span>}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground truncate">
                       {it.category ? `${it.category} · ` : ""}
                       {brl(Number(it.estimated_value))} un{it.quantity > 1 ? ` · ${brl(line)} total` : ""}
                     </p>
                   </div>
 
-                  {/* Shared toggle */}
-                  <button
-                    title={it.shared ? "Uso compartilhado" : "Uso individual"}
-                    onClick={() => patch.mutate({ id: it.id, changes: { shared: !it.shared } })}
-                    className={cn(
-                      "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border transition-colors shrink-0",
-                      it.shared
-                        ? "border-primary/40 text-primary bg-primary/5"
-                        : "border-border text-muted-foreground hover:bg-muted",
-                    )}
-                  >
-                    {it.shared ? <Users className="h-3 w-3" /> : <User className="h-3 w-3" />}
-                    {it.shared ? "Compart." : "Individual"}
-                  </button>
+                  {/* Uso: Compartilhado / Individual / membro */}
+                  <Select value={usageOf(it)} onValueChange={(v) => setUsageFor(it, v)}>
+                    <SelectTrigger className="h-7 w-auto min-w-[7rem] text-xs gap-1 shrink-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>{usageOptions}</SelectContent>
+                  </Select>
 
                   {/* Purchased toggle (planned only) */}
                   {!isOwned && (
@@ -334,7 +379,7 @@ export function InventoryTab({ userId }: Props) {
                       title={it.purchased ? "Marcar como não comprada" : "Marcar como comprada"}
                       onClick={() => patch.mutate({ id: it.id, changes: { purchased: !it.purchased } })}
                       className={cn(
-                        "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border transition-colors shrink-0",
+                        "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium border transition-colors shrink-0",
                         it.purchased
                           ? "border-income/40 text-income bg-income/5"
                           : "border-border text-muted-foreground hover:bg-muted",
@@ -347,7 +392,7 @@ export function InventoryTab({ userId }: Props) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-expense opacity-0 group-hover:opacity-100 transition"
+                    className="h-8 w-8 text-muted-foreground hover:text-expense shrink-0"
                     disabled={remove.isPending}
                     onClick={() => remove.mutate(it.id)}
                   >
