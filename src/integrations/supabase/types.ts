@@ -80,6 +80,48 @@ export type Database = {
         }
         Relationships: []
       }
+      inventory: {
+        Row: {
+          category: string | null
+          created_at: string
+          estimated_value: number
+          id: string
+          kind: string
+          name: string
+          notes: string | null
+          purchased: boolean
+          quantity: number
+          shared: boolean
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          estimated_value?: number
+          id?: string
+          kind?: string
+          name: string
+          notes?: string | null
+          purchased?: boolean
+          quantity?: number
+          shared?: boolean
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          estimated_value?: number
+          id?: string
+          kind?: string
+          name?: string
+          notes?: string | null
+          purchased?: boolean
+          quantity?: number
+          shared?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
@@ -148,6 +190,36 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      wa_contacts: {
+        Row: {
+          alerts_enabled: boolean
+          created_at: string
+          id: string
+          label: string | null
+          phone: string
+          user_id: string
+          verified: boolean
+        }
+        Insert: {
+          alerts_enabled?: boolean
+          created_at?: string
+          id?: string
+          label?: string | null
+          phone: string
+          user_id: string
+          verified?: boolean
+        }
+        Update: {
+          alerts_enabled?: boolean
+          created_at?: string
+          id?: string
+          label?: string | null
+          phone?: string
+          user_id?: string
+          verified?: boolean
         }
         Relationships: []
       }
