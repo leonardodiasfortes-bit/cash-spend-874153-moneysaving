@@ -17,6 +17,7 @@ import {
   Tag,
   BrainCircuit,
   Settings,
+  Package,
 } from "lucide-react";
 import { addMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -41,6 +42,7 @@ import { AccountsTab } from "@/components/finance/AccountsTab";
 import { ReportsTab } from "@/components/finance/ReportsTab";
 import { TransactionsTab } from "@/components/finance/TransactionsTab";
 import { InvestmentsTab } from "@/components/finance/InvestmentsTab";
+import { InventoryTab } from "@/components/finance/InventoryTab";
 import { MonthAllocationCard } from "@/components/finance/MonthAllocationCard";
 import { CategoriesTab } from "@/components/finance/CategoriesTab";
 import { AIAnalysisTab } from "@/components/finance/AIAnalysisTab";
@@ -53,7 +55,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-type Tab = "overview" | "transactions" | "accounts" | "investments" | "categories" | "reports" | "ai" | "settings";
+type Tab = "overview" | "transactions" | "accounts" | "investments" | "inventory" | "categories" | "reports" | "ai" | "settings";
 
 function Dashboard() {
   const { user } = AuthLayoutRoute.useRouteContext();
@@ -173,6 +175,12 @@ function Dashboard() {
             onClick={() => setTab("investments")}
             icon={<Landmark className="h-3.5 w-3.5" />}
             label="Investimentos"
+          />
+          <TabButton
+            active={tab === "inventory"}
+            onClick={() => setTab("inventory")}
+            icon={<Package className="h-3.5 w-3.5" />}
+            label="Inventário"
           />
           <TabButton
             active={tab === "categories"}
@@ -320,6 +328,8 @@ function Dashboard() {
           <AccountsTab userId={user.id} />
         ) : tab === "investments" ? (
           <InvestmentsTab accounts={accounts} onAddAccount={() => setTab("accounts")} userId={user.id} />
+        ) : tab === "inventory" ? (
+          <InventoryTab userId={user.id} />
         ) : tab === "categories" ? (
           <CategoriesTab userId={user.id} />
         ) : tab === "reports" ? (
