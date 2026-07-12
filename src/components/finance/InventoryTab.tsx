@@ -475,7 +475,7 @@ export function InventoryTab({ userId }: Props) {
                   <div
                     className={cn(
                       "h-9 w-9 rounded-xl grid place-items-center shrink-0",
-                      isOwned ? "bg-primary/10 text-primary" : "bg-warning/15 text-warning-foreground",
+                      isOwned ? "bg-primary/10 text-primary" : "bg-warning/15 text-warning",
                     )}
                   >
                     {isOwned ? <Package className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}

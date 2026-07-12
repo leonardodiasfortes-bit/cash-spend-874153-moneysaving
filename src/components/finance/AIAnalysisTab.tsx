@@ -216,7 +216,7 @@ export function AIAnalysisTab({ transactions, categories, accounts }: Props) {
               "text-[10px] px-2 py-0.5 rounded-full font-medium",
               apiKey
                 ? "bg-income/15 text-income"
-                : "bg-warning/15 text-warning-foreground",
+                : "bg-warning/15 text-warning",
             )}
           >
             {apiKey ? "Ativa" : "Necessária"}

@@ -122,7 +122,7 @@ export function WhatsAppSettings({ userId }: Props) {
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Integração WhatsApp
         </p>
-        <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-warning/15 text-warning-foreground font-medium">
+        <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-warning/15 text-warning font-medium">
           Em configuração
         </span>
       </div>

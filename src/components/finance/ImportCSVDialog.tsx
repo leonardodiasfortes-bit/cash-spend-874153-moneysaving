@@ -390,7 +390,7 @@ export function ImportCSVDialog({ open, onClose, userId }: Props) {
 
                   {/* Duplicate notice */}
                   {activeDupCount > 0 && (
-                    <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-xs text-warning-foreground/90">
+                    <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-xs text-warning">
                       <CopyX className="h-3.5 w-3.5 shrink-0 mt-0.5 text-warning" />
                       <span>
                         <strong>{activeDupCount}</strong> linha(s) já existem e foram desmarcadas.
