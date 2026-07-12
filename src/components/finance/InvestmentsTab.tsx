@@ -60,6 +60,17 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
   const investments = accounts.filter((a) => a.type === "investment");
   const qc = useQueryClient();
 
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("categories").select("*").order("name");
+      if (error) throw error;
+      return data as Category[];
+    },
+  });
+
+  const investCatId = categories.find((c) => c.name === "Investimentos" && c.type === "income")?.id ?? null;
+
   const totalInvested = investments.reduce((s, a) => s + Number(a.balance), 0);
   const totalMonthly = investments.reduce((s, a) => s + monthlyReturn(a), 0);
   const totalAnnual = totalInvested > 0 ? totalInvested * (Math.pow(1 + (totalMonthly / totalInvested), 12) - 1) : 0;
@@ -72,7 +83,14 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
   const [transitoryCutoff, setTransitoryCutoff] = useState(() => format(new Date(), "yyyy-MM"));
 
   const pendingSurplusByMonth = useMemo(() => {
-    const surplusByMonth = monthlySurplus(transactions);
+    // Exclude income that came FROM the investments themselves (rendimentos /
+    // retiradas logged as receita in the "Investimentos" category). That's the
+    // portfolio's own yield, not new external money — counting it as "sobra a
+    // reinvestir" would double-count and massively inflate the projection.
+    const relevant = investCatId
+      ? transactions.filter((t) => !(t.type === "income" && t.category_id === investCatId))
+      : transactions;
+    const surplusByMonth = monthlySurplus(relevant);
     const pending = new Map<string, number>();
     for (const [month, surplus] of surplusByMonth) {
       if (surplus <= 0) continue;
@@ -88,7 +106,7 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
     // `accounts` triggers a recompute whenever a real aporte/desfazer runs
     // (MonthAllocationCard), since that's the only thing that flips `.applied`
     // in localStorage — otherwise this memo would go stale after a direcionar.
-  }, [transactions, accounts]);
+  }, [transactions, accounts, investCatId]);
 
   // Whether the feature has anything to show at all, independent of the cutoff
   // (so the card + selector never disappear just because the chosen cutoff
@@ -158,17 +176,6 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
     },
     onError: (e: Error) => toast.error(e.message),
   });
-
-  const { data: categories = [] } = useQuery({
-    queryKey: ["categories"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("categories").select("*").order("name");
-      if (error) throw error;
-      return data as Category[];
-    },
-  });
-
-  const investCatId = categories.find((c) => c.name === "Investimentos" && c.type === "income")?.id ?? null;
 
   const retiradaMutation = useMutation({
     mutationFn: async () => {
@@ -385,7 +392,8 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Soma o saldo positivo dos meses ainda não direcionados — como se já estivesse reinvestido.
+                  Soma a sobra positiva dos meses ainda não direcionados (sem contar os rendimentos dos
+                  próprios investimentos) — como se já estivesse reinvestida.
                 </p>
               </div>
             </div>
