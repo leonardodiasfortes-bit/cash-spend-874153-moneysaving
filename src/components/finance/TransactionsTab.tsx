@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { format, addMonths, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User, Banknote, CalendarClock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User, Banknote, CalendarClock, Download } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { monthRange, brl, netAmount, type Category, type Transaction } from "@/lib/finance";
-import { getPersonMap, savePersons } from "@/lib/family";
+import { getMembers, getPersonMap, savePersons } from "@/lib/family";
 import { fetchMembers, type Member } from "@/lib/members";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -82,6 +82,33 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
   const members = useMemo(() => memberRows.map((m) => m.name), [memberRows]);
   const personMap = getPersonMap();
   const qc = useQueryClient();
+
+  // Names already used to tag transactions in this browser (ff_persons) or
+  // kept in the legacy ff_members list, but not yet present in the synced
+  // `members` table — e.g. "leonardo"/"paola" tagged before the DB table
+  // existed. One-click reconciliation so old tags become filterable again
+  // without retagging anything by hand.
+  const localToImport = useMemo(() => {
+    const used = new Set(Object.values(getPersonMap()).filter(Boolean));
+    for (const m of getMembers()) used.add(m);
+    const existing = new Set(members);
+    return Array.from(used).filter((n) => !existing.has(n));
+  }, [members]);
+
+  const importMembers = useMutation({
+    mutationFn: async () => {
+      if (localToImport.length === 0) throw new Error("Nada para importar.");
+      const { error } = await supabase
+        .from("members")
+        .insert(localToImport.map((n) => ({ user_id: userId, name: n })));
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["members"] });
+      toast.success("Pessoas importadas — filtro atualizado.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const allPersonTransactions = useMemo(() => {
     if (!personFilter) return [];
@@ -357,6 +384,18 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
         )}
 
         {/* Import + Select buttons */}
+        {localToImport.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs border-primary/50 text-primary"
+            disabled={importMembers.isPending}
+            onClick={() => importMembers.mutate()}
+            title={`Importar: ${localToImport.join(", ")}`}
+          >
+            <Download className="h-3.5 w-3.5" /> Importar pessoas ({localToImport.length})
+          </Button>
+        )}
         <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setImportOpen(true)}>
           <FileUp className="h-3.5 w-3.5" /> Importar extrato
         </Button>
