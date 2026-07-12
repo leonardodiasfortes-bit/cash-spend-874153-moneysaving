@@ -2,12 +2,13 @@ import { useMemo, useState } from "react";
 import { format, addMonths, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User, Banknote, CalendarClock } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { monthRange, brl, netAmount, type Category, type Transaction } from "@/lib/finance";
-import { getMembers, getPersonMap, savePersons } from "@/lib/family";
+import { getPersonMap, savePersons } from "@/lib/family";
+import { fetchMembers, type Member } from "@/lib/members";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TransactionList } from "./TransactionList";
@@ -73,7 +74,12 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
   const [bulkPersonOpen, setBulkPersonOpen] = useState(false);
   const [bulkPerson, setBulkPerson] = useState(NOBODY);
   const [bulkValuesOpen, setBulkValuesOpen] = useState(false);
-  const members = getMembers();
+  const { data: memberRows = [] } = useQuery<Member[]>({
+    queryKey: ["members"],
+    queryFn: fetchMembers,
+    retry: false,
+  });
+  const members = useMemo(() => memberRows.map((m) => m.name), [memberRows]);
   const personMap = getPersonMap();
   const qc = useQueryClient();
 

@@ -1,16 +1,14 @@
 const MEMBERS_KEY = "ff_members";
 const PERSONS_KEY = "ff_persons";
 
+/** Legacy per-browser member list — kept only so InventoryTab can offer a
+ * one-time "importar deste navegador" into the synced `members` table. */
 export function getMembers(): string[] {
   try {
     return JSON.parse(localStorage.getItem(MEMBERS_KEY) ?? "[]");
   } catch {
     return [];
   }
-}
-
-export function setMembers(members: string[]): void {
-  localStorage.setItem(MEMBERS_KEY, JSON.stringify(members));
 }
 
 export function getPersonMap(): Record<string, string> {

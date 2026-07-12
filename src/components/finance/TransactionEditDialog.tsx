@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { type Category, type Transaction } from "@/lib/finance";
-import { getMembers, getPersonMap, savePerson } from "@/lib/family";
+import { getPersonMap, savePerson } from "@/lib/family";
+import { fetchMembers, type Member } from "@/lib/members";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,7 +54,12 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
   const [status, setStatus] = useState<"paid" | "pending">(tx.status ?? "pending");
   const [person, setPerson] = useState(() => getPersonMap()[tx.id] || NOBODY);
 
-  const members = getMembers();
+  const { data: members = [] } = useQuery<Member[]>({
+    queryKey: ["members"],
+    queryFn: fetchMembers,
+    retry: false,
+  });
+  const memberNames = members.map((m) => m.name);
 
   useEffect(() => {
     if (open) {
@@ -154,7 +160,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NOBODY}>— Ninguém —</SelectItem>
-                  {members.map((m) => (
+                  {memberNames.map((m) => (
                     <SelectItem key={m} value={m}>{m}</SelectItem>
                   ))}
                 </SelectContent>

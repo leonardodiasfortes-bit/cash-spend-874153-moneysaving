@@ -7,7 +7,8 @@ import { Loader2, Plus, RefreshCw, Users } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { offsetDate, type Category, type RecurrenceType } from "@/lib/finance";
-import { getMembers, setMembers, savePersons, savePerson } from "@/lib/family";
+import { savePersons, savePerson } from "@/lib/family";
+import { fetchMembers, type Member } from "@/lib/members";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,7 +69,6 @@ export function TransactionForm({ userId }: { userId: string }) {
   const [yearsAhead, setYearsAhead] = useState(2);
 
   const [selectedPerson, setSelectedPerson] = useState("");
-  const [members, setMembersState] = useState<string[]>(getMembers);
   const [newMember, setNewMember] = useState("");
 
   const qc = useQueryClient();
@@ -80,6 +80,30 @@ export function TransactionForm({ userId }: { userId: string }) {
       if (error) throw error;
       return data as Category[];
     },
+  });
+
+  const { data: memberRows = [] } = useQuery<Member[]>({
+    queryKey: ["members"],
+    queryFn: fetchMembers,
+    retry: false,
+  });
+  const members = memberRows.map((m) => m.name);
+
+  const addMemberMutation = useMutation({
+    mutationFn: async (nm: string) => {
+      const n = nm.trim();
+      if (!n) throw new Error("Informe um nome.");
+      const { error } = await supabase.from("members").insert({ user_id: userId, name: n });
+      if (error) {
+        if ((error.message ?? "").includes("duplicate")) throw new Error("Essa pessoa já existe.");
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["members"] });
+      setNewMember("");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const filtered = categories.filter((c) => c.type === type);
@@ -150,15 +174,6 @@ export function TransactionForm({ userId }: { userId: string }) {
     },
     onError: (e: Error) => toast.error(e.message),
   });
-
-  function addMember() {
-    const name = newMember.trim();
-    if (!name || members.includes(name)) return;
-    const updated = [...members, name];
-    setMembersState(updated);
-    setMembers(updated);
-    setNewMember("");
-  }
 
   function resetForm() {
     setAmount("");
@@ -329,24 +344,23 @@ export function TransactionForm({ userId }: { userId: string }) {
                 </button>
               ))}
             </div>
-            {members.length < 6 && (
-              <div className="flex gap-1">
-                <Input
-                  value={newMember}
-                  onChange={(e) => setNewMember(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addMember())}
-                  placeholder="+ Adicionar membro"
-                  className="h-7 text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={addMember}
-                  className="text-xs text-primary hover:underline px-1 shrink-0"
-                >
-                  OK
-                </button>
-              </div>
-            )}
+            <div className="flex gap-1">
+              <Input
+                value={newMember}
+                onChange={(e) => setNewMember(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addMemberMutation.mutate(newMember))}
+                placeholder="+ Adicionar pessoa"
+                className="h-7 text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => addMemberMutation.mutate(newMember)}
+                disabled={addMemberMutation.isPending || !newMember.trim()}
+                className="text-xs text-primary hover:underline px-1 shrink-0 disabled:opacity-50"
+              >
+                OK
+              </button>
+            </div>
           </div>
 
           {/* Recorrência */}

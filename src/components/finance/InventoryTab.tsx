@@ -19,6 +19,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { brl } from "@/lib/finance";
 import { getMembers } from "@/lib/family";
+import { fetchMembers, type Member } from "@/lib/members";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,11 +48,6 @@ interface InvItem {
   shared: boolean;
   purchased: boolean;
   person: string | null;
-}
-
-interface Member {
-  id: string;
-  name: string;
 }
 
 // "Uso" sentinels — the rest of the values are member names (Léo, Paola…).
@@ -129,11 +125,7 @@ export function InventoryTab({ userId }: Props) {
 
   const { data: members = [] } = useQuery<Member[]>({
     queryKey: ["members"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("members").select("id, name").order("name");
-      if (error) throw error;
-      return data as Member[];
-    },
+    queryFn: fetchMembers,
     retry: false,
   });
 
