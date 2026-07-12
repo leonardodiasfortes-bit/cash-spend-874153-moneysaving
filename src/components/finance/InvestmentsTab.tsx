@@ -59,22 +59,38 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
   const blendedRate = totalInvested > 0 ? (totalMonthly / totalInvested) * 100 : 0;
 
   // ── Conta transitória (previsão) ────────────────────────────────────────────
-  // Soma o saldo positivo de cada mês ainda não "direcionado" (aportado de
-  // verdade via MonthAllocationCard). É só uma projeção — não altera nenhum
-  // saldo real até o usuário executar a ação de direcionar.
-  const transitory = useMemo(() => {
+  // Soma o saldo positivo de cada mês (até o mês/ano de corte) ainda não
+  // "direcionado" (aportado de verdade via MonthAllocationCard). É só uma
+  // projeção — não altera nenhum saldo real até o usuário direcionar.
+  const [transitoryCutoff, setTransitoryCutoff] = useState(() => format(new Date(), "yyyy-MM"));
+
+  const pendingSurplusByMonth = useMemo(() => {
     const surplusByMonth = monthlySurplus(transactions);
-    let sum = 0;
+    const pending = new Map<string, number>();
     for (const [month, surplus] of surplusByMonth) {
       if (surplus <= 0) continue;
       if (getAllocation(month).applied) continue;
-      sum += surplus;
+      pending.set(month, surplus);
     }
-    return sum;
+    return pending;
     // `accounts` triggers a recompute whenever a real aporte/desfazer runs
     // (MonthAllocationCard), since that's the only thing that flips `.applied`
     // in localStorage — otherwise this memo would go stale after a direcionar.
   }, [transactions, accounts]);
+
+  // Whether the feature has anything to show at all, independent of the cutoff
+  // (so the card + selector never disappear just because the chosen cutoff
+  // happens to exclude every pending month).
+  const hasPendingSurplus = pendingSurplusByMonth.size > 0;
+
+  const transitory = useMemo(() => {
+    let sum = 0;
+    for (const [month, surplus] of pendingSurplusByMonth) {
+      if (month > transitoryCutoff) continue; // ignora lançamentos futuros além do corte
+      sum += surplus;
+    }
+    return sum;
+  }, [pendingSurplusByMonth, transitoryCutoff]);
 
   const transitoryMonthlyYield = transitory * (blendedRate / 100);
 
@@ -343,7 +359,7 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
       </div>
 
       {/* Conta transitória (previsão) */}
-      {transitory > 0 && (
+      {hasPendingSurplus && (
         <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-5">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
@@ -366,20 +382,37 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
               <ArrowRight className="h-3.5 w-3.5" /> Direcionar agora
             </Button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Saldo (previsão)</p>
-              <p className="text-lg font-semibold tabular-nums text-primary">{brl(transitory)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Taxa usada</p>
-              <p className="text-lg font-semibold tabular-nums">{blendedRate.toFixed(2)}% a.m.</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Rendimento est./mês</p>
-              <p className="text-lg font-semibold tabular-nums text-income">{brl(transitoryMonthlyYield)}</p>
-            </div>
+
+          <div className="flex items-center gap-2 mt-4">
+            <Label className="text-xs text-muted-foreground shrink-0">Considerando até</Label>
+            <Input
+              type="month"
+              value={transitoryCutoff}
+              onChange={(e) => setTransitoryCutoff(e.target.value)}
+              className="h-8 text-sm w-40"
+            />
           </div>
+
+          {transitory > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Saldo (previsão)</p>
+                <p className="text-lg font-semibold tabular-nums text-primary">{brl(transitory)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Taxa usada</p>
+                <p className="text-lg font-semibold tabular-nums">{blendedRate.toFixed(2)}% a.m.</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Rendimento est./mês</p>
+                <p className="text-lg font-semibold tabular-nums text-income">{brl(transitoryMonthlyYield)}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground mt-3">
+              Nenhum saldo pendente até este mês — tente avançar a data acima.
+            </p>
+          )}
         </div>
       )}
 
