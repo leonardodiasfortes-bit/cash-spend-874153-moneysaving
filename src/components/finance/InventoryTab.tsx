@@ -12,11 +12,13 @@ import {
   Database,
   Copy,
   ShoppingCart,
+  X,
+  Download,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { brl } from "@/lib/finance";
-import { getMembers, getPersonMap, savePerson } from "@/lib/family";
+import { getMembers } from "@/lib/family";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +46,12 @@ interface InvItem {
   estimated_value: number;
   shared: boolean;
   purchased: boolean;
+  person: string | null;
+}
+
+interface Member {
+  id: string;
+  name: string;
 }
 
 // "Uso" sentinels — the rest of the values are member names (Léo, Paola…).
@@ -60,6 +68,7 @@ const INVENTORY_SQL = `create table if not exists public.inventory (
   estimated_value numeric(14,2) not null default 0 check (estimated_value >= 0),
   shared          boolean not null default false,
   purchased       boolean not null default false,
+  person          text,
   notes           text,
   created_at      timestamptz not null default now()
 );
@@ -68,10 +77,21 @@ grant select, insert, update, delete on public.inventory to authenticated;
 grant all on public.inventory to service_role;
 drop policy if exists "inv_own" on public.inventory;
 create policy "inv_own" on public.inventory
-  for all to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
-create index if not exists idx_inventory_user_kind on public.inventory(user_id, kind);`;
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create table if not exists public.members (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, name)
+);
+alter table public.members enable row level security;
+grant select, insert, update, delete on public.members to authenticated;
+grant all on public.members to service_role;
+drop policy if exists "members_own" on public.members;
+create policy "members_own" on public.members
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());`;
 
 function isMissingTable(err: unknown): boolean {
   const m = (err as { message?: string })?.message?.toLowerCase() ?? "";
@@ -83,7 +103,6 @@ export function InventoryTab({ userId }: Props) {
   const [view, setView] = useState<Kind>("owned");
   const [sqlOpen, setSqlOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [tick, setTick] = useState(0); // forces re-read of the localStorage person map
 
   // add form
   const [name, setName] = useState("");
@@ -92,7 +111,8 @@ export function InventoryTab({ userId }: Props) {
   const [value, setValue] = useState("");
   const [usage, setUsage] = useState<string>(SHARED);
 
-  const members = getMembers();
+  // people management
+  const [newMember, setNewMember] = useState("");
 
   const { data: all = [], error, isLoading } = useQuery<InvItem[]>({
     queryKey: ["inventory"],
@@ -107,9 +127,24 @@ export function InventoryTab({ userId }: Props) {
     retry: false,
   });
 
+  const { data: members = [] } = useQuery<Member[]>({
+    queryKey: ["members"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("members").select("id, name").order("name");
+      if (error) throw error;
+      return data as Member[];
+    },
+    retry: false,
+  });
+
+  const memberNames = useMemo(() => members.map((m) => m.name), [members]);
+  const localToImport = useMemo(
+    () => getMembers().filter((n) => !memberNames.includes(n)),
+    [memberNames],
+  );
+
   const tableMissing = !!error && isMissingTable(error);
   const items = useMemo(() => all.filter((i) => i.kind === view), [all, view]);
-  const personMap = useMemo(() => getPersonMap(), [tick, all]);
 
   const totals = useMemo(() => {
     const relevant = view === "planned" ? items.filter((i) => !i.purchased) : items;
@@ -130,8 +165,7 @@ export function InventoryTab({ userId }: Props) {
 
   function usageOf(item: InvItem): string {
     if (item.shared) return SHARED;
-    const p = personMap[item.id];
-    return p && members.includes(p) ? p : INDIVIDUAL;
+    return item.person && memberNames.includes(item.person) ? item.person : INDIVIDUAL;
   }
 
   const add = useMutation({
@@ -141,37 +175,38 @@ export function InventoryTab({ userId }: Props) {
       const q = parseInt(quantity) || 1;
       const val = parseFloat((value || "0").replace(",", ".")) || 0;
       const isShared = usage === SHARED;
-      const { data, error } = await supabase
-        .from("inventory")
-        .insert({
-          user_id: userId,
-          kind: view,
-          name: nm,
-          category: view === "owned" ? category.trim() || null : null,
-          quantity: q,
-          estimated_value: val,
-          shared: isShared,
-        })
-        .select("id")
-        .single();
+      const person = isShared || usage === INDIVIDUAL ? null : usage;
+      const { error } = await supabase.from("inventory").insert({
+        user_id: userId,
+        kind: view,
+        name: nm,
+        category: view === "owned" ? category.trim() || null : null,
+        quantity: q,
+        estimated_value: val,
+        shared: isShared,
+        person,
+      });
       if (error) {
         if (isMissingTable(error)) throw new Error("Rode o SQL do inventário no Supabase primeiro.");
         throw error;
       }
-      const person = isShared || usage === INDIVIDUAL ? null : usage;
-      if (person && data?.id) savePerson(data.id, person);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["inventory"] });
       resetForm();
-      setTick((t) => t + 1);
       toast.success(view === "owned" ? "Item adicionado." : "Compra planejada adicionada.");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const patch = useMutation({
-    mutationFn: async ({ id, changes }: { id: string; changes: { shared?: boolean; purchased?: boolean } }) => {
+    mutationFn: async ({
+      id,
+      changes,
+    }: {
+      id: string;
+      changes: { shared?: boolean; purchased?: boolean; person?: string | null };
+    }) => {
       const { error } = await supabase.from("inventory").update(changes).eq("id", id);
       if (error) throw error;
     },
@@ -191,12 +226,52 @@ export function InventoryTab({ userId }: Props) {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const addMember = useMutation({
+    mutationFn: async (nm: string) => {
+      const n = nm.trim();
+      if (!n) throw new Error("Informe um nome.");
+      const { error } = await supabase.from("members").insert({ user_id: userId, name: n });
+      if (error) {
+        if (isMissingTable(error)) throw new Error("Rode o SQL de pessoas no Supabase primeiro.");
+        if ((error.message ?? "").includes("duplicate")) throw new Error("Essa pessoa já existe.");
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["members"] });
+      setNewMember("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const removeMember = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("members").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["members"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const importMembers = useMutation({
+    mutationFn: async () => {
+      if (localToImport.length === 0) throw new Error("Nada para importar.");
+      const { error } = await supabase
+        .from("members")
+        .insert(localToImport.map((n) => ({ user_id: userId, name: n })));
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["members"] });
+      toast.success("Pessoas importadas deste navegador.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   function setUsageFor(item: InvItem, val: string) {
     const nextShared = val === SHARED;
-    if (nextShared !== item.shared) patch.mutate({ id: item.id, changes: { shared: nextShared } });
     const person = val === SHARED || val === INDIVIDUAL ? null : val;
-    savePerson(item.id, person);
-    setTick((t) => t + 1);
+    patch.mutate({ id: item.id, changes: { shared: nextShared, person } });
   }
 
   function copySql() {
@@ -216,7 +291,7 @@ export function InventoryTab({ userId }: Props) {
         </div>
         <div className="p-5 space-y-3">
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Crie a tabela <span className="font-mono">inventory</span> no seu Supabase para ativar esta aba.
+            Crie as tabelas do inventário no seu Supabase para ativar esta aba.
             Em <span className="font-mono">supabase.com</span> → seu projeto → <strong>SQL Editor</strong> →
             cole o SQL → <strong>RUN</strong>. Depois recarregue a página.
           </p>
@@ -248,7 +323,7 @@ export function InventoryTab({ userId }: Props) {
     <>
       <SelectItem value={SHARED} className="text-xs">Compartilhado</SelectItem>
       <SelectItem value={INDIVIDUAL} className="text-xs">Individual</SelectItem>
-      {members.map((m) => (
+      {memberNames.map((m) => (
         <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>
       ))}
     </>
@@ -276,6 +351,66 @@ export function InventoryTab({ userId }: Props) {
         >
           <ShoppingCart className="h-3.5 w-3.5" /> Compras planejadas
         </button>
+      </div>
+
+      {/* People management */}
+      <div className="rounded-xl border bg-muted/20 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <Users className="h-3.5 w-3.5 text-muted-foreground" />
+          <Label className="text-xs font-medium">Pessoas</Label>
+          <span className="text-[11px] text-muted-foreground">— sincronizadas entre aparelhos</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {members.map((m) => (
+            <span
+              key={m.id}
+              className="flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 px-2 py-0.5 text-xs text-primary"
+            >
+              {m.name}
+              <button
+                onClick={() => removeMember.mutate(m.id)}
+                className="text-primary/60 hover:text-expense"
+                title="Remover"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          {members.length === 0 && (
+            <span className="text-xs text-muted-foreground">Nenhuma pessoa cadastrada.</span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            value={newMember}
+            onChange={(e) => setNewMember(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addMember.mutate(newMember))}
+            placeholder="+ Adicionar pessoa (ex: Léo)"
+            className="h-8 text-xs w-48"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs"
+            disabled={addMember.isPending || !newMember.trim()}
+            onClick={() => addMember.mutate(newMember)}
+          >
+            Adicionar
+          </Button>
+          {localToImport.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 gap-1.5 text-xs"
+              disabled={importMembers.isPending}
+              onClick={() => importMembers.mutate()}
+              title={`Importar: ${localToImport.join(", ")}`}
+            >
+              {importMembers.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Importar deste navegador ({localToImport.length})
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Summary */}

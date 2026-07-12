@@ -89,6 +89,7 @@ export type Database = {
           kind: string
           name: string
           notes: string | null
+          person: string | null
           purchased: boolean
           quantity: number
           shared: boolean
@@ -102,6 +103,7 @@ export type Database = {
           kind?: string
           name: string
           notes?: string | null
+          person?: string | null
           purchased?: boolean
           quantity?: number
           shared?: boolean
@@ -115,9 +117,31 @@ export type Database = {
           kind?: string
           name?: string
           notes?: string | null
+          person?: string | null
           purchased?: boolean
           quantity?: number
           shared?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
+      members: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
           user_id?: string
         }
         Relationships: []
