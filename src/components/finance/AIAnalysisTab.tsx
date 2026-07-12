@@ -46,7 +46,7 @@ function buildContext(
     const label = format(ref, "MMM/yyyy", { locale: ptBR });
 
     const monthTx = transactions.filter((t) => {
-      const d = new Date(t.transaction_date + "T00:00:00");
+      const d = new Date((t.due_date ?? t.transaction_date) + "T00:00:00");
       return d >= start && d <= end;
     });
 

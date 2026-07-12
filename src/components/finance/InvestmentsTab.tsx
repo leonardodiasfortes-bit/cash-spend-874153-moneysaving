@@ -49,6 +49,13 @@ function monthlyReturn(acc: Account): number {
   return Number(acc.balance) * (acc.credit_limit / 100);
 }
 
+const fmtAxis = (v: number) =>
+  Math.abs(v) >= 1_000_000
+    ? `${(v / 1_000_000).toFixed(1)}M`
+    : Math.abs(v) >= 1000
+    ? `${(v / 1000).toFixed(0)}k`
+    : String(Math.round(v));
+
 export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAllocate, userId }: Props) {
   const investments = accounts.filter((a) => a.type === "investment");
   const qc = useQueryClient();
@@ -69,8 +76,13 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
     const pending = new Map<string, number>();
     for (const [month, surplus] of surplusByMonth) {
       if (surplus <= 0) continue;
-      if (getAllocation(month).applied) continue;
-      pending.set(month, surplus);
+      // Subtract only what was actually directed (the aporte amount can be
+      // partial, and the month's surplus can grow after directing), so a
+      // partially-directed month still contributes its remainder instead of
+      // vanishing entirely.
+      const directed = getAllocation(month).applied?.amount ?? 0;
+      const remaining = surplus - directed;
+      if (remaining > 0.005) pending.set(month, remaining);
     }
     return pending;
     // `accounts` triggers a recompute whenever a real aporte/desfazer runs
@@ -208,7 +220,6 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
         mes: i,
         saldo: Math.max(0, balance),
         rendimento: Math.max(0, income),
-        saldoPrevisto: Math.max(0, balancePrevisto),
         rendimentoPrevisto: Math.max(0, incomePrevisto),
       });
       balance = Math.max(0, balance + income - w);
@@ -544,16 +555,20 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
                 tickFormatter={(v) => (v % 12 === 0 ? `${v / 12}a` : "")}
               />
               <YAxis
-                tickFormatter={(v) =>
-                  v >= 1_000_000
-                    ? `${(v / 1_000_000).toFixed(1)}M`
-                    : v >= 1000
-                    ? `${(v / 1000).toFixed(0)}k`
-                    : String(v)
-                }
+                yAxisId="left"
+                tickFormatter={fmtAxis}
                 tickLine={false}
                 axisLine={false}
                 fontSize={11}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tickFormatter={fmtAxis}
+                tickLine={false}
+                axisLine={false}
+                fontSize={11}
+                width={40}
               />
               <Tooltip
                 contentStyle={{
@@ -572,8 +587,9 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
                 ]}
                 labelFormatter={(l) => `Mês ${l} (${Math.floor(Number(l) / 12)}a ${Number(l) % 12}m)`}
               />
-              <ReferenceLine y={0} stroke="var(--border)" />
+              <ReferenceLine yAxisId="left" y={0} stroke="var(--border)" />
               <Line
+                yAxisId="left"
                 type="monotone"
                 dataKey="saldo"
                 name="saldo"
@@ -582,6 +598,7 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
                 dot={false}
               />
               <Line
+                yAxisId="right"
                 type="monotone"
                 dataKey="rendimento"
                 name="rendimento"
@@ -592,6 +609,7 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
               />
               {transitory > 0 && (
                 <Line
+                  yAxisId="right"
                   type="monotone"
                   dataKey="rendimentoPrevisto"
                   name="rendimentoPrevisto"
@@ -605,17 +623,16 @@ export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAll
             </LineChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex gap-4 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1">
-            <span className="inline-block w-4 h-0.5 bg-primary" /> Saldo patrimonial
+            <span className="inline-block w-4 h-0.5 bg-primary" /> Saldo patrimonial <span className="opacity-60">(eixo esq.)</span>
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block w-4 border-t border-dashed border-income" /> Rendimento mensal
+            <span className="inline-block w-4 border-t border-dashed border-income" /> Rendimento mensal <span className="opacity-60">(eixo dir.)</span>
           </span>
           {transitory > 0 && (
             <span className="flex items-center gap-1">
-              <span className="inline-block w-4 border-t border-dotted border-primary/60" /> Rendimento previsto
-              (com transitória)
+              <span className="inline-block w-4 border-t border-dotted border-primary/60" /> Rendimento previsto com transitória <span className="opacity-60">(eixo dir.)</span>
             </span>
           )}
         </div>
