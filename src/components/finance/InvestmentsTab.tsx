@@ -9,13 +9,14 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { TrendingUp, Plus, ArrowDownToLine, Loader2 } from "lucide-react";
+import { TrendingUp, Plus, ArrowDownToLine, Loader2, PiggyBank, ArrowRight } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
 import { supabase } from "@/integrations/supabase/client";
-import { brl, type Account, type Category } from "@/lib/finance";
+import { brl, monthlySurplus, type Account, type Category, type Transaction } from "@/lib/finance";
+import { getAllocation } from "@/lib/allocation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +38,9 @@ import {
 
 interface Props {
   accounts: Account[];
+  transactions: Transaction[];
   onAddAccount: () => void;
+  onGoToAllocate: () => void;
   userId: string;
 }
 
@@ -46,7 +49,7 @@ function monthlyReturn(acc: Account): number {
   return Number(acc.balance) * (acc.credit_limit / 100);
 }
 
-export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
+export function InvestmentsTab({ accounts, transactions, onAddAccount, onGoToAllocate, userId }: Props) {
   const investments = accounts.filter((a) => a.type === "investment");
   const qc = useQueryClient();
 
@@ -54,6 +57,26 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
   const totalMonthly = investments.reduce((s, a) => s + monthlyReturn(a), 0);
   const totalAnnual = totalInvested > 0 ? totalInvested * (Math.pow(1 + (totalMonthly / totalInvested), 12) - 1) : 0;
   const blendedRate = totalInvested > 0 ? (totalMonthly / totalInvested) * 100 : 0;
+
+  // ── Conta transitória (previsão) ────────────────────────────────────────────
+  // Soma o saldo positivo de cada mês ainda não "direcionado" (aportado de
+  // verdade via MonthAllocationCard). É só uma projeção — não altera nenhum
+  // saldo real até o usuário executar a ação de direcionar.
+  const transitory = useMemo(() => {
+    const surplusByMonth = monthlySurplus(transactions);
+    let sum = 0;
+    for (const [month, surplus] of surplusByMonth) {
+      if (surplus <= 0) continue;
+      if (getAllocation(month).applied) continue;
+      sum += surplus;
+    }
+    return sum;
+    // `accounts` triggers a recompute whenever a real aporte/desfazer runs
+    // (MonthAllocationCard), since that's the only thing that flips `.applied`
+    // in localStorage — otherwise this memo would go stale after a direcionar.
+  }, [transactions, accounts]);
+
+  const transitoryMonthlyYield = transitory * (blendedRate / 100);
 
   const [withdrawal, setWithdrawal] = useState("");
   const [months, setMonths] = useState(60);
@@ -157,21 +180,26 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
 
   const projection = useMemo(() => {
     const w = parseFloat(withdrawal) || 0;
-    let balance = totalInvested;
     const rate = blendedRate / 100;
+    let balance = totalInvested;
+    let balancePrevisto = totalInvested + transitory;
     const rows = [];
 
     for (let i = 0; i <= months; i++) {
       const income = balance * rate;
-      rows.push({ mes: i, saldo: Math.max(0, balance), rendimento: income });
-      balance = balance + income - w;
-      if (balance <= 0) {
-        for (let j = i + 1; j <= months; j++) rows.push({ mes: j, saldo: 0, rendimento: 0 });
-        break;
-      }
+      const incomePrevisto = balancePrevisto * rate;
+      rows.push({
+        mes: i,
+        saldo: Math.max(0, balance),
+        rendimento: Math.max(0, income),
+        saldoPrevisto: Math.max(0, balancePrevisto),
+        rendimentoPrevisto: Math.max(0, incomePrevisto),
+      });
+      balance = Math.max(0, balance + income - w);
+      balancePrevisto = Math.max(0, balancePrevisto + incomePrevisto - w);
     }
     return rows;
-  }, [totalInvested, blendedRate, withdrawal, months]);
+  }, [totalInvested, transitory, blendedRate, withdrawal, months]);
 
   const depleted = projection[projection.length - 1].saldo === 0;
   const depletionMonth = projection.findIndex((r) => r.saldo === 0);
@@ -313,6 +341,47 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
           sub="preserva o principal"
         />
       </div>
+
+      {/* Conta transitória (previsão) */}
+      {transitory > 0 && (
+        <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-primary/15 text-primary grid place-items-center shrink-0">
+                <PiggyBank className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">Conta transitória</p>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
+                    Previsão
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Soma o saldo positivo dos meses ainda não direcionados — como se já estivesse reinvestido.
+                </p>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={onGoToAllocate}>
+              <ArrowRight className="h-3.5 w-3.5" /> Direcionar agora
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Saldo (previsão)</p>
+              <p className="text-lg font-semibold tabular-nums text-primary">{brl(transitory)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Taxa usada</p>
+              <p className="text-lg font-semibold tabular-nums">{blendedRate.toFixed(2)}% a.m.</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Rendimento est./mês</p>
+              <p className="text-lg font-semibold tabular-nums text-income">{brl(transitoryMonthlyYield)}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Per-account list */}
       <div className="rounded-2xl border bg-card overflow-hidden">
@@ -462,7 +531,11 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
                 }}
                 formatter={(v: number, name: string) => [
                   brl(v),
-                  name === "saldo" ? "Saldo" : "Rendimento",
+                  name === "saldo"
+                    ? "Saldo"
+                    : name === "rendimento"
+                    ? "Rendimento"
+                    : "Rendimento previsto",
                 ]}
                 labelFormatter={(l) => `Mês ${l} (${Math.floor(Number(l) / 12)}a ${Number(l) % 12}m)`}
               />
@@ -484,6 +557,18 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
                 dot={false}
                 strokeDasharray="4 2"
               />
+              {transitory > 0 && (
+                <Line
+                  type="monotone"
+                  dataKey="rendimentoPrevisto"
+                  name="rendimentoPrevisto"
+                  stroke="var(--primary)"
+                  strokeOpacity={0.6}
+                  strokeWidth={1.5}
+                  dot={false}
+                  strokeDasharray="2 3"
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -494,6 +579,12 @@ export function InvestmentsTab({ accounts, onAddAccount, userId }: Props) {
           <span className="flex items-center gap-1">
             <span className="inline-block w-4 border-t border-dashed border-income" /> Rendimento mensal
           </span>
+          {transitory > 0 && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-4 border-t border-dotted border-primary/60" /> Rendimento previsto
+              (com transitória)
+            </span>
+          )}
         </div>
       </div>
     </div>

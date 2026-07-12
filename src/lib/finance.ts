@@ -101,3 +101,15 @@ export function rowTone(tx: Transaction): "paid" | "danger" | null {
 export function isAfterDate(a: Date, b: Date) {
   return isAfter(a, b);
 }
+
+/** Sum of (receitas − despesas) per month ("yyyy-MM"), keyed by due_date ?? transaction_date. */
+export function monthlySurplus(transactions: Transaction[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const t of transactions) {
+    const ref = t.due_date ?? t.transaction_date;
+    const month = ref.slice(0, 7);
+    const amt = t.type === "income" ? netAmount(t) : -netAmount(t);
+    map.set(month, (map.get(month) ?? 0) + amt);
+  }
+  return map;
+}

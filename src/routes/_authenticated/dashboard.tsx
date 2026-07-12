@@ -327,7 +327,13 @@ function Dashboard() {
         ) : tab === "accounts" ? (
           <AccountsTab userId={user.id} />
         ) : tab === "investments" ? (
-          <InvestmentsTab accounts={accounts} onAddAccount={() => setTab("accounts")} userId={user.id} />
+          <InvestmentsTab
+            accounts={accounts}
+            transactions={transactions}
+            onAddAccount={() => setTab("accounts")}
+            onGoToAllocate={() => setTab("overview")}
+            userId={user.id}
+          />
         ) : tab === "inventory" ? (
           <InventoryTab userId={user.id} />
         ) : tab === "categories" ? (
