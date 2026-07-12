@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { brl, dueAlert, fmtDate, rowTone, type Category, type Transaction } from "@/lib/finance";
-import { getPersonMap } from "@/lib/family";
+import { getPersonMap, personLabel } from "@/lib/family";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -117,7 +117,7 @@ export function TransactionList({ transactions, categories, selectedIds, onToggl
                 <p className="font-medium text-sm truncate">{tx.description}</p>
                 {person && (
                   <Badge variant="outline" className="text-[10px] font-medium gap-1 border-primary/40 text-primary">
-                    {person}
+                    {personLabel(person)}
                   </Badge>
                 )}
                 {cat && (

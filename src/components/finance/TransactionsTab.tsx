@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { format, addMonths, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User, Banknote, CalendarClock, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X, FileUp, CheckSquare, Trash2, Tag, Square, User, Banknote, CalendarClock, Download, Wand2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { monthRange, brl, netAmount, type Category, type Transaction } from "@/lib/finance";
-import { getMembers, getPersonMap, savePersons } from "@/lib/family";
+import { getMembers, getPersonMap, savePersons, SHARED_PERSON, personLabel } from "@/lib/family";
 import { fetchMembers, type Member } from "@/lib/members";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,31 @@ const DUE_LABELS: Record<DueFilter, string> = {
   pending: "Pendentes",
   paid: "Pagas",
 };
+
+/** Filter-only sentinel — never persisted, just means "personMap has no entry". */
+const UNSET_PERSON = "__unset__";
+
+function filterLabel(v: string): string {
+  return v === UNSET_PERSON ? "Sem Quem" : personLabel(v);
+}
+
+/** Groups members whose names only differ by case (e.g. "leonardo" vs "Leonardo"),
+ * picking the one with an uppercase letter as canonical. */
+function findCaseDuplicates(members: Member[]): { keep: Member; remove: Member[] }[] {
+  const groups = new Map<string, Member[]>();
+  for (const m of members) {
+    const key = m.name.toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(m);
+  }
+  const result: { keep: Member; remove: Member[] }[] = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const keep = group.find((m) => /[A-ZÀ-Ý]/.test(m.name)) ?? group[0];
+    result.push({ keep, remove: group.filter((m) => m.id !== keep.id) });
+  }
+  return result;
+}
 
 export function TransactionsTab({ transactions, categories, isLoading, userId }: Props) {
   const [refDate, setRefDate] = useState<Date | null>(null);
@@ -110,9 +135,39 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Members that only differ by case (e.g. "leonardo" imported above vs an
+  // already-existing "Leonardo") — merges them into one, rewriting any
+  // transaction tags that pointed at the removed spelling so nothing loses
+  // its "Quem?" in the process.
+  const memberDuplicates = useMemo(() => findCaseDuplicates(memberRows), [memberRows]);
+
+  const dedupeMembers = useMutation({
+    mutationFn: async () => {
+      if (memberDuplicates.length === 0) throw new Error("Nenhuma duplicata encontrada.");
+      const map = getPersonMap();
+      for (const { keep, remove } of memberDuplicates) {
+        const removeNames = new Set(remove.map((m) => m.name));
+        const affectedIds = Object.entries(map)
+          .filter(([, person]) => removeNames.has(person))
+          .map(([txId]) => txId);
+        if (affectedIds.length > 0) savePersons(affectedIds, keep.name);
+      }
+      const idsToDelete = memberDuplicates.flatMap(({ remove }) => remove.map((m) => m.id));
+      const { error } = await supabase.from("members").delete().in("id", idsToDelete);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["members"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      toast.success("Duplicatas corrigidas.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const allPersonTransactions = useMemo(() => {
     if (!personFilter) return [];
     const map = getPersonMap();
+    if (personFilter === UNSET_PERSON) return transactions.filter((t) => !map[t.id]);
     return transactions.filter((t) => map[t.id] === personFilter);
   }, [transactions, personFilter]);
 
@@ -158,7 +213,8 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
     }
 
     if (typeFilter !== "all") list = list.filter((t) => t.type === typeFilter);
-    if (personFilter) list = list.filter((t) => personMap[t.id] === personFilter);
+    if (personFilter === UNSET_PERSON) list = list.filter((t) => !personMap[t.id]);
+    else if (personFilter) list = list.filter((t) => personMap[t.id] === personFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -298,6 +354,7 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NOBODY}>— Ninguém —</SelectItem>
+                <SelectItem value={SHARED_PERSON}>Compartilhado</SelectItem>
                 {members.map((m) => (
                   <SelectItem key={m} value={m}>{m}</SelectItem>
                 ))}
@@ -374,6 +431,14 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
               className={`px-3 py-1.5 transition-colors ${personFilter === "" ? "bg-primary text-primary-foreground font-medium" : "hover:bg-muted text-muted-foreground"}`}>
               Todos
             </button>
+            <button onClick={() => setPersonFilter(personFilter === UNSET_PERSON ? "" : UNSET_PERSON)}
+              className={`px-3 py-1.5 transition-colors ${personFilter === UNSET_PERSON ? "bg-primary text-primary-foreground font-medium" : "hover:bg-muted text-muted-foreground"}`}>
+              Sem Quem
+            </button>
+            <button onClick={() => setPersonFilter(personFilter === SHARED_PERSON ? "" : SHARED_PERSON)}
+              className={`px-3 py-1.5 transition-colors ${personFilter === SHARED_PERSON ? "bg-primary text-primary-foreground font-medium" : "hover:bg-muted text-muted-foreground"}`}>
+              Compartilhado
+            </button>
             {members.map((m) => (
               <button key={m} onClick={() => setPersonFilter(personFilter === m ? "" : m)}
                 className={`px-3 py-1.5 transition-colors ${personFilter === m ? "bg-primary text-primary-foreground font-medium" : "hover:bg-muted text-muted-foreground"}`}>
@@ -394,6 +459,20 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
             title={`Importar: ${localToImport.join(", ")}`}
           >
             <Download className="h-3.5 w-3.5" /> Importar pessoas ({localToImport.length})
+          </Button>
+        )}
+        {memberDuplicates.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs border-warning/50 text-warning-foreground"
+            disabled={dedupeMembers.isPending}
+            onClick={() => dedupeMembers.mutate()}
+            title={memberDuplicates
+              .map(({ keep, remove }) => `${remove.map((m) => m.name).join(", ")} → ${keep.name}`)
+              .join(" · ")}
+          >
+            <Wand2 className="h-3.5 w-3.5" /> Corrigir duplicatas ({memberDuplicates.length})
           </Button>
         )}
         <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setImportOpen(true)}>
@@ -436,7 +515,7 @@ export function TransactionsTab({ transactions, categories, isLoading, userId }:
       {/* Per-person analytics panel */}
       {personFilter && (
         <PersonSummaryPanel
-          person={personFilter}
+          person={filterLabel(personFilter)}
           transactions={filtered}
           allTransactions={allPersonTransactions}
           categories={categories}

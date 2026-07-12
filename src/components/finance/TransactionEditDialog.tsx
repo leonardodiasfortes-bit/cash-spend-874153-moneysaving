@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { type Category, type Transaction } from "@/lib/finance";
-import { getPersonMap, savePerson } from "@/lib/family";
+import { getPersonMap, savePerson, SHARED_PERSON } from "@/lib/family";
 import { fetchMembers, type Member } from "@/lib/members";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -160,6 +160,7 @@ export function TransactionEditDialog({ tx, categories, open, onClose }: Props) 
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NOBODY}>— Ninguém —</SelectItem>
+                  <SelectItem value={SHARED_PERSON}>Compartilhado</SelectItem>
                   {memberNames.map((m) => (
                     <SelectItem key={m} value={m}>{m}</SelectItem>
                   ))}

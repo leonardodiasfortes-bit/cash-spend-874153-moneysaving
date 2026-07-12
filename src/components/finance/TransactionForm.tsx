@@ -7,7 +7,7 @@ import { Loader2, Plus, RefreshCw, Users } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { offsetDate, type Category, type RecurrenceType } from "@/lib/finance";
-import { savePersons, savePerson } from "@/lib/family";
+import { savePersons, savePerson, SHARED_PERSON } from "@/lib/family";
 import { fetchMembers, type Member } from "@/lib/members";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -320,14 +320,14 @@ export function TransactionForm({ userId }: { userId: string }) {
             <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
-                onClick={() => setSelectedPerson("")}
+                onClick={() => setSelectedPerson(selectedPerson === SHARED_PERSON ? "" : SHARED_PERSON)}
                 className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                  selectedPerson === ""
+                  selectedPerson === SHARED_PERSON
                     ? "bg-primary text-primary-foreground border-primary"
                     : "border-border text-muted-foreground hover:bg-muted"
                 }`}
               >
-                Geral
+                Compartilhado
               </button>
               {members.map((m) => (
                 <button

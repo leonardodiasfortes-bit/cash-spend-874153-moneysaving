@@ -1,6 +1,13 @@
 const MEMBERS_KEY = "ff_members";
 const PERSONS_KEY = "ff_persons";
 
+/** Explicit "Compartilhado" tag — distinct from having no tag at all. */
+export const SHARED_PERSON = "__shared__";
+
+export function personLabel(value: string): string {
+  return value === SHARED_PERSON ? "Compartilhado" : value;
+}
+
 /** Legacy per-browser member list — kept only so InventoryTab can offer a
  * one-time "importar deste navegador" into the synced `members` table. */
 export function getMembers(): string[] {
